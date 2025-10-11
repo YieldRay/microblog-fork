@@ -1,5 +1,5 @@
-import { Project } from "ts-morph";
 import { isBuiltin } from "node:module";
+import { Project } from "ts-morph";
 
 /**
  * Determine if a module specifier is a bare package name (e.g. "pkg" or "@scope/pkg").
@@ -46,6 +46,59 @@ export async function convertImportsToNpmProtocol(): Promise<number> {
   return changed;
 }
 
+export async function convertJsxPragmaToNpm(): Promise<number> {
+  const project = new Project({ tsConfigFilePath: "./tsconfig.json" });
+  project.addSourceFilesAtPaths(["src/**/*.tsx"]);
+  const sourceFiles = project
+    .getSourceFiles()
+    .filter((sf) => sf.getFilePath().replace(/\\/g, "/").startsWith("src/"));
+  let changed = 0;
+  for (const sf of sourceFiles) {
+    const text = sf.getFullText();
+    const before = (
+      text.match(/\/\*\*\s*@jsxImportSource\s+hono\/jsx\s*\*\//g) || []
+    ).length;
+    if (before > 0) {
+      const newText = text.replaceAll(
+        "/** @jsxImportSource hono/jsx */",
+        "/** @jsxImportSource npm:hono/jsx */",
+      );
+      if (newText !== text) {
+        sf.replaceWithText(newText);
+        await sf.save();
+        changed += before;
+      }
+    }
+  }
+  return changed;
+}
+
+export async function revertJsxPragmaFromNpm(): Promise<number> {
+  const project = new Project({ tsConfigFilePath: "./tsconfig.json" });
+  project.addSourceFilesAtPaths(["src/**/*.tsx"]);
+  const sourceFiles = project
+    .getSourceFiles()
+    .filter((sf) => sf.getFilePath().replace(/\\/g, "/").startsWith("src/"));
+  let changed = 0;
+  for (const sf of sourceFiles) {
+    const text = sf.getFullText();
+    const before = (
+      text.match(/\/\*\*\s*@jsxImportSource\s+npm:hono\/jsx\s*\*\//g) || []
+    ).length;
+    if (before > 0) {
+      const newText = text.replaceAll(
+        "/** @jsxImportSource npm:hono/jsx */",
+        "/** @jsxImportSource hono/jsx */",
+      );
+      if (newText !== text) {
+        sf.replaceWithText(newText);
+        await sf.save();
+        changed += before;
+      }
+    }
+  }
+  return changed;
+}
 /**
  * Revert static import declarations from "npm:pkg" back to "pkg" in src TS/TSX files.
  */
@@ -77,11 +130,17 @@ if (import.meta.main) {
   const mode = process.argv[2] ?? "to-npm";
   (async () => {
     if (mode === "to-npm") {
-      const n = await convertImportsToNpmProtocol();
-      console.log(`Converted ${n} import specifier(s) to npm: protocol.`);
+      const n1 = await convertImportsToNpmProtocol();
+      const n2 = await convertJsxPragmaToNpm();
+      console.log(
+        `Converted ${n1} import specifier(s) and ${n2} JSX pragma(s) to npm: protocol.`,
+      );
     } else if (mode === "from-npm") {
-      const n = await revertImportsFromNpmProtocol();
-      console.log(`Reverted ${n} import specifier(s) from npm: protocol.`);
+      const n1 = await revertImportsFromNpmProtocol();
+      const n2 = await revertJsxPragmaFromNpm();
+      console.log(
+        `Reverted ${n1} import specifier(s) and ${n2} JSX pragma(s) from npm: protocol.`,
+      );
     } else {
       console.error("Unknown mode. Use 'to-npm' or 'from-npm'.");
       process.exitCode = 1;
