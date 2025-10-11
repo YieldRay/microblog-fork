@@ -1,3 +1,4 @@
+import { glob, readFile, writeFile } from "node:fs/promises";
 import { isBuiltin } from "node:module";
 import { Project } from "ts-morph";
 
@@ -47,55 +48,33 @@ export async function convertImportsToNpmProtocol(): Promise<number> {
 }
 
 export async function convertJsxPragmaToNpm(): Promise<number> {
-  const project = new Project({ tsConfigFilePath: "./tsconfig.json" });
-  project.addSourceFilesAtPaths(["src/**/*.tsx"]);
-  const sourceFiles = project
-    .getSourceFiles()
-    .filter((sf) => sf.getFilePath().replace(/\\/g, "/").startsWith("src/"));
   let changed = 0;
-  for (const sf of sourceFiles) {
-    const text = sf.getFullText();
-    const before = (
-      text.match(/\/\*\*\s*@jsxImportSource\s+hono\/jsx\s*\*\//g) || []
-    ).length;
-    if (before > 0) {
-      const newText = text.replaceAll(
-        "/** @jsxImportSource hono/jsx */",
-        "/** @jsxImportSource npm:hono/jsx */",
-      );
-      if (newText !== text) {
-        sf.replaceWithText(newText);
-        await sf.save();
-        changed += before;
-      }
-    }
+  for await (const filePath of glob("src/**/*.tsx")) {
+    const original = await readFile(filePath, "utf8");
+    if (!original.includes("/** @jsxImportSource hono/jsx */")) continue;
+    const updated = original.replaceAll(
+      "/** @jsxImportSource hono/jsx */",
+      "/** @jsxImportSource npm:hono/jsx */",
+    );
+    if (updated === original) continue;
+    await writeFile(filePath, updated, "utf8");
+    changed++;
   }
   return changed;
 }
 
 export async function revertJsxPragmaFromNpm(): Promise<number> {
-  const project = new Project({ tsConfigFilePath: "./tsconfig.json" });
-  project.addSourceFilesAtPaths(["src/**/*.tsx"]);
-  const sourceFiles = project
-    .getSourceFiles()
-    .filter((sf) => sf.getFilePath().replace(/\\/g, "/").startsWith("src/"));
   let changed = 0;
-  for (const sf of sourceFiles) {
-    const text = sf.getFullText();
-    const before = (
-      text.match(/\/\*\*\s*@jsxImportSource\s+npm:hono\/jsx\s*\*\//g) || []
-    ).length;
-    if (before > 0) {
-      const newText = text.replaceAll(
-        "/** @jsxImportSource npm:hono/jsx */",
-        "/** @jsxImportSource hono/jsx */",
-      );
-      if (newText !== text) {
-        sf.replaceWithText(newText);
-        await sf.save();
-        changed += before;
-      }
-    }
+  for await (const filePath of glob("src/**/*.tsx")) {
+    const original = await readFile(filePath, "utf8");
+    if (!original.includes("/** @jsxImportSource npm:hono/jsx */")) continue;
+    const updated = original.replaceAll(
+      "/** @jsxImportSource npm:hono/jsx */",
+      "/** @jsxImportSource hono/jsx */",
+    );
+    if (updated === original) continue;
+    await writeFile(filePath, updated, "utf8");
+    changed++;
   }
   return changed;
 }
