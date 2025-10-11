@@ -236,8 +236,9 @@ federation
     if (actorId == null) return;
     if (object.id == null) return;
     const content = object.content?.toString();
+    let insertedPost = null;
     if (content != null) {
-      const insertedPost = await db
+      insertedPost = await db
         .insertInto("posts")
         .values({
           uri: object.id.href,
@@ -252,9 +253,32 @@ federation
         })
         .returningAll()
         .executeTakeFirst();
-
-      // Handle attachments
-      if (insertedPost) {
+    }
+    // Check if this is a direct message (the `to` contains only a single local actor)
+    if (
+      insertedPost &&
+      Array.isArray(object.toIds) &&
+      object.toIds.length === 1
+    ) {
+      const toUri = object.toIds[0];
+      // find local actor
+      const recipient = await db
+        .selectFrom("actors")
+        .selectAll()
+        .where("uri", "=", toUri.href)
+        .executeTakeFirst();
+      if (recipient) {
+        await db
+          .insertInto("notifications")
+          .values({
+            recipient_actor_id: recipient.id,
+            type: "direct",
+            related_post_id: insertedPost.id,
+            related_actor_id: actorId,
+            message: `${author.name || author.preferredUsername || author.id?.href || "Unknown"} sent you a direct message`,
+            is_read: 0,
+          })
+          .execute();
       }
     }
   })

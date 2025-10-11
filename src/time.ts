@@ -30,12 +30,8 @@ export function parseTimestamp(timestamp: string): Temporal.Instant {
   normalized = normalized.replace(/\+(\d{2})Z?$/, "+$1:00");
   normalized = normalized.replace(/-(\d{2})Z?$/, "-$1:00");
 
-  // Add Z if no timezone specified
-  if (
-    !normalized.includes("+") &&
-    !normalized.includes("-") &&
-    !normalized.endsWith("Z")
-  ) {
+  // If there is no timezone information, force append 'Z' (UTC)
+  if (!/([+-]\d{2}:?\d{2}|Z)$/.test(normalized)) {
     normalized += "Z";
   }
 

@@ -667,7 +667,10 @@ export const PostView: FC<PostViewProps> = ({ post }) => {
 
   // get username from handle
   const username = post.handle.split("@")[1];
-  const postUrl = `/users/${username}/posts/${post.id}`;
+  // Determine if the post is from an external server
+  const isExternal =
+    post.url && !post.url.startsWith("/") && !post.url.includes("localhost");
+  const postUrl = isExternal ? post.url : `/users/${username}/posts/${post.id}`;
 
   return (
     <div
@@ -738,6 +741,8 @@ export const NotificationItem: FC<NotificationItemProps> = ({
         return "👤";
       case "like":
         return "❤️";
+      case "direct":
+        return "✉️";
       default:
         return "📢";
     }
