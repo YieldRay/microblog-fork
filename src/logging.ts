@@ -1,4 +1,4 @@
-import { configure, getConsoleSink } from "@logtape/logtape";
+import { configure, getConsoleSink, getLogger } from "@logtape/logtape";
 
 await configure({
   sinks: {
@@ -11,3 +11,5 @@ await configure({
     { category: "logtape", lowestLevel: "warning", sinks: ["console"] },
   ],
 });
+
+export const logger = getLogger("microblog");

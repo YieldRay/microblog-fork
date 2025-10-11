@@ -8,8 +8,8 @@
     "@types/better-sqlite3": "^7.6.13",
     "better-sqlite3": "^12.4.1",
     "hono": "^4.9.10",
+    "isomorphic-dompurify": "^2.28.0",
     "kysely": "^0.28.8",
-    "stringify-entities": "^4.0.4",
     "tsx": "^4.20.6",
     "x-forwarded-fetch": "^0.2.0"
   },

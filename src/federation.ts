@@ -7,6 +7,7 @@ import {
   PUBLIC_COLLECTION,
   Person,
   Undo,
+  Update,
   createFederation,
   exportJwk,
   generateCryptoKeyPair,
@@ -17,10 +18,12 @@ import {
   type Recipient,
 } from "@fedify/fedify";
 import { InProcessMessageQueue, MemoryKvStore } from "@fedify/fedify";
+import { Mention } from "@fedify/fedify/vocab";
 import { Temporal } from "@js-temporal/polyfill";
 import { getLogger } from "@logtape/logtape";
 import db from "./db.ts";
 import type { Actor, Key } from "./database.ts";
+import { findMentionedUsers, parseMentions } from "./mentions.ts";
 
 const logger = getLogger("microblog");
 
@@ -224,16 +227,65 @@ federation
     if (object.id == null) return;
     const content = object.content?.toString();
     if (content != null) {
-      await db
+      // Get mediaType, defaults to text/html (ActivityPub standard)
+      const mediaType = object.mediaType || 'text/html';
+      
+      const insertedPost = await db
         .insertInto('posts')
         .values({
           uri: object.id.href,
           actor_id: actorId,
           content: content,
+          media_type: mediaType,
           url: object.url instanceof URL ? object.url.href : (typeof object.url === 'string' ? object.url : null),
         })
-        .execute();
+        .returningAll()
+        .executeTakeFirst();
+
+      // Handle attachments
+      if (insertedPost) {
+      }
     }
+  })
+  .on(Update, async (ctx, update) => {
+    const object = await update.getObject();
+    if (!(object instanceof Person)) return;
+    
+    const actor = update.actorId;
+    if (actor == null) return;
+    
+    // Verify that the updater is the owner of the object being updated
+    if (object.id?.href !== actor.href) {
+      logger.debug("Update actor does not match object actor: {updateActor} vs {objectActor}", {
+        updateActor: actor.href,
+        objectActor: object.id?.href
+      });
+      return;
+    }
+    
+    // Find the corresponding actor
+    const existingActor = await db
+      .selectFrom('actors')
+      .selectAll()
+      .where('uri', '=', actor.href)
+      .executeTakeFirst();
+
+    if (!existingActor) {
+      logger.debug("Actor not found for update: {uri}", { uri: actor.href });
+      return;
+    }
+
+    // Update actor information
+    await db
+      .updateTable('actors')
+      .set({
+        name: object.name?.toString() || null,
+        updated: new Date().toISOString(),
+      })
+      .where('id', '=', existingActor.id)
+      .execute();
+
+    logger.info("Updated remote actor from Update activity: {uri}", { uri: actor.href });
   });
 
 federation
@@ -294,15 +346,30 @@ federation.setObjectDispatcher(
       .where('posts.id', '=', Number(values.id))
       .executeTakeFirst();
     if (post == null) return null;
+
+
+    // Parse mentions and create tags field
+    const mentionedUsernames = parseMentions(post.content);
+    const mentionedActors = await findMentionedUsers(mentionedUsernames);
+    
+    const tags = mentionedActors.map(actor => {
+      // Create ActivityPub-compliant Mention objects
+      return new Mention({
+        href: new URL(actor.uri),
+        name: actor.handle.startsWith('@') ? actor.handle : `@${actor.handle}`,
+      });
+    });
+
     return new Note({
       id: ctx.getObjectUri(Note, values),
       attribution: ctx.getActorUri(values.identifier),
       to: PUBLIC_COLLECTION,
       cc: ctx.getFollowersUri(values.identifier),
       content: post.content,
-      mediaType: "text/html",
+      mediaType: post.media_type || "text/html",
       published: Temporal.Instant.from(`${post.created.replace(" ", "T")}Z`),
       url: ctx.getObjectUri(Note, values),
+      tags: tags.length > 0 ? tags : undefined,
     });
   },
 );
