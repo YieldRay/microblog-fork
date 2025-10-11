@@ -9,20 +9,23 @@
     "@js-temporal/polyfill": "^0.5.1",
     "@logtape/logtape": "^1.1.1",
     "better-sqlite3": "^12.4.1",
-    "hono": "^4.9.10",
+    "hono": "^4.9.11",
     "isomorphic-dompurify": "^2.28.0",
     "kysely": "^0.28.8",
     "tsx": "^4.20.6",
     "x-forwarded-fetch": "^0.2.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@biomejs/biome": "^2.2.5",
-    "@fedify/cli": "^1.8.13"
+    "@fedify/cli": "^1.8.13",
+    "@types/better-sqlite3": "^7.6.13"
   },
   "scripts": {
     "dev": "tsx watch ./src/index.ts",
     "prod": "node --import tsx ./src/index.ts",
-    "tunnel": "fedify tunnel 8000"
+    "tunnel": "fedify tunnel 8000",
+    "lint": "biome lint",
+    "format": "biome format",
+    "type-check": "tsc --noEmit"
   }
 }

@@ -4,7 +4,6 @@ import app from "./app.tsx";
 import { initializeDatabase } from "./db.ts";
 import { logger } from "./logging.ts";
 
-
 async function startServer() {
   try {
     await initializeDatabase();
@@ -15,8 +14,7 @@ async function startServer() {
         port: 8000,
         fetch: behindProxy(app.fetch.bind(app)),
       },
-      (info) =>
-        logger.info(`Server started at http://localhost:${info.port}`),
+      (info) => logger.info(`Server started at http://localhost:${info.port}`),
     );
   } catch (error) {
     logger.error("Failed to start server:", { error });

@@ -16,7 +16,7 @@ import {
   PUBLIC_COLLECTION,
   type Actor as APActor,
   type Recipient,
-  type RequestContext
+  type RequestContext,
 } from "@fedify/fedify";
 import { InProcessMessageQueue, MemoryKvStore } from "@fedify/fedify";
 import { Mention } from "@fedify/fedify/vocab";
@@ -36,10 +36,10 @@ const federation = createFederation({
 federation
   .setActorDispatcher("/users/{identifier}", async (ctx, identifier) => {
     const user = await db
-      .selectFrom('users')
-      .innerJoin('actors', 'users.id', 'actors.user_id')
+      .selectFrom("users")
+      .innerJoin("actors", "users.id", "actors.user_id")
       .selectAll()
-      .where('users.username', '=', identifier)
+      .where("users.username", "=", identifier)
       .executeTakeFirst();
     if (user == null) return null;
 
@@ -58,17 +58,17 @@ federation
       assertionMethods: keys.map((k) => k.multikey),
     });
   })
-  .setKeyPairsDispatcher(async (ctx, identifier) => {
+  .setKeyPairsDispatcher(async (_ctx, identifier) => {
     const user = await db
-      .selectFrom('users')
+      .selectFrom("users")
       .selectAll()
-      .where('username', '=', identifier)
+      .where("username", "=", identifier)
       .executeTakeFirst();
     if (user == null) return [];
     const rows = await db
-      .selectFrom('keys')
+      .selectFrom("keys")
       .selectAll()
-      .where('user_id', '=', user.id)
+      .where("user_id", "=", user.id)
       .execute();
     const keys = Object.fromEntries(
       rows.map((row) => [row.type, row]),
@@ -85,7 +85,7 @@ federation
         );
         const { privateKey, publicKey } = await generateCryptoKeyPair(keyType);
         await db
-          .insertInto('keys')
+          .insertInto("keys")
           .values({
             user_id: user.id,
             type: keyType,
@@ -134,10 +134,10 @@ federation
       return;
     }
     const followingActor = await db
-      .selectFrom('actors')
-      .innerJoin('users', 'users.id', 'actors.user_id')
+      .selectFrom("actors")
+      .innerJoin("users", "users.id", "actors.user_id")
       .selectAll()
-      .where('users.username', '=', object.identifier)
+      .where("users.username", "=", object.identifier)
       .executeTakeFirst();
     const following_id = followingActor?.id;
     if (following_id == null) {
@@ -149,7 +149,7 @@ federation
     const followerId = (await persistActor(follower))?.id;
     if (following_id != null && followerId != null) {
       await db
-        .insertInto('follows')
+        .insertInto("follows")
         .values({
           following_id: following_id,
           follower_id: followerId,
@@ -171,20 +171,28 @@ federation
     if (parsed == null || parsed.type !== "actor") return;
     if (undo.actorId != null) {
       await db
-        .deleteFrom('follows')
-        .where((eb) => eb.and([
-          eb('following_id', '=', eb
-            .selectFrom('actors')
-            .innerJoin('users', 'actors.user_id', 'users.id')
-            .select('actors.id')
-            .where('users.username', '=', parsed.identifier)
-          ),
-          eb('follower_id', '=', eb
-            .selectFrom('actors')
-            .select('id')
-            .where('uri', '=', undo.actorId!.href)
-          )
-        ]))
+        .deleteFrom("follows")
+        .where((eb) =>
+          eb.and([
+            eb(
+              "following_id",
+              "=",
+              eb
+                .selectFrom("actors")
+                .innerJoin("users", "actors.user_id", "users.id")
+                .select("actors.id")
+                .where("users.username", "=", parsed.identifier),
+            ),
+            eb(
+              "follower_id",
+              "=",
+              eb
+                .selectFrom("actors")
+                .select("id")
+                .where("uri", "=", undo.actorId!.href),
+            ),
+          ]),
+        )
         .execute();
     }
   })
@@ -200,15 +208,15 @@ federation
     const followingId = (await persistActor(following))?.id;
     if (followingId == null) return;
     const followerActor = await db
-      .selectFrom('actors')
-      .innerJoin('users', 'actors.user_id', 'users.id')
-      .select('actors.id')
-      .where('users.username', '=', parsed.identifier)
+      .selectFrom("actors")
+      .innerJoin("users", "actors.user_id", "users.id")
+      .select("actors.id")
+      .where("users.username", "=", parsed.identifier)
       .executeTakeFirst();
-    
+
     if (followerActor) {
       await db
-        .insertInto('follows')
+        .insertInto("follows")
         .values({
           following_id: followingId,
           follower_id: followerActor.id,
@@ -216,7 +224,7 @@ federation
         .execute();
     }
   })
-  .on(Create, async (ctx, create) => {
+  .on(Create, async (_ctx, create) => {
     const object = await create.getObject();
     if (!(object instanceof Note)) return;
     const actor = create.actorId;
@@ -229,12 +237,17 @@ federation
     const content = object.content?.toString();
     if (content != null) {
       const insertedPost = await db
-        .insertInto('posts')
+        .insertInto("posts")
         .values({
           uri: object.id.href,
           actor_id: actorId,
           content: content,
-          url: object.url instanceof URL ? object.url.href : (typeof object.url === 'string' ? object.url : null),
+          url:
+            object.url instanceof URL
+              ? object.url.href
+              : typeof object.url === "string"
+                ? object.url
+                : null,
         })
         .returningAll()
         .executeTakeFirst();
@@ -244,27 +257,30 @@ federation
       }
     }
   })
-  .on(Update, async (ctx, update) => {
+  .on(Update, async (_ctx, update) => {
     const object = await update.getObject();
     if (!(object instanceof Person)) return;
-    
+
     const actor = update.actorId;
     if (actor == null) return;
-    
+
     // Verify that the updater is the owner of the object being updated
     if (object.id?.href !== actor.href) {
-      logger.debug("Update actor does not match object actor: {updateActor} vs {objectActor}", {
-        updateActor: actor.href,
-        objectActor: object.id?.href
-      });
+      logger.debug(
+        "Update actor does not match object actor: {updateActor} vs {objectActor}",
+        {
+          updateActor: actor.href,
+          objectActor: object.id?.href,
+        },
+      );
       return;
     }
-    
+
     // Find the corresponding actor
     const existingActor = await db
-      .selectFrom('actors')
+      .selectFrom("actors")
       .selectAll()
-      .where('uri', '=', actor.href)
+      .where("uri", "=", actor.href)
       .executeTakeFirst();
 
     if (!existingActor) {
@@ -274,39 +290,45 @@ federation
 
     // Update actor information
     await db
-      .updateTable('actors')
+      .updateTable("actors")
       .set({
         name: object.name?.toString() || null,
         updated: new Date().toISOString(),
       })
-      .where('id', '=', existingActor.id)
+      .where("id", "=", existingActor.id)
       .execute();
 
-    logger.info("Updated remote actor from Update activity: {uri}", { uri: actor.href });
+    logger.info("Updated remote actor from Update activity: {uri}", {
+      uri: actor.href,
+    });
   });
 
 federation
   .setFollowersDispatcher(
     "/users/{identifier}/followers",
-    async (ctx, identifier, cursor) => {
+    async (_ctx, identifier, _cursor) => {
       const followers = await db
-        .selectFrom('follows')
-        .innerJoin('actors as followers', 'follows.follower_id', 'followers.id')
-        .innerJoin('actors as following', 'follows.following_id', 'following.id')
-        .innerJoin('users', 'users.id', 'following.user_id')
+        .selectFrom("follows")
+        .innerJoin("actors as followers", "follows.follower_id", "followers.id")
+        .innerJoin(
+          "actors as following",
+          "follows.following_id",
+          "following.id",
+        )
+        .innerJoin("users", "users.id", "following.user_id")
         .select([
-          'followers.id',
-          'followers.user_id',
-          'followers.uri',
-          'followers.handle',
-          'followers.name',
-          'followers.inbox_url',
-          'followers.shared_inbox_url',
-          'followers.url',
-          'followers.created'
+          "followers.id",
+          "followers.user_id",
+          "followers.uri",
+          "followers.handle",
+          "followers.name",
+          "followers.inbox_url",
+          "followers.shared_inbox_url",
+          "followers.url",
+          "followers.created",
         ])
-        .where('users.username', '=', identifier)
-        .orderBy('follows.created', 'desc')
+        .where("users.username", "=", identifier)
+        .orderBy("follows.created", "desc")
         .execute();
       const items: Recipient[] = followers.map((f) => ({
         id: new URL(f.uri),
@@ -319,13 +341,13 @@ federation
       return { items };
     },
   )
-  .setCounter(async (ctx, identifier) => {
+  .setCounter(async (_ctx, identifier) => {
     const result = await db
-      .selectFrom('follows')
-      .innerJoin('actors', 'actors.id', 'follows.following_id')
-      .innerJoin('users', 'users.id', 'actors.user_id')
-      .select((eb) => eb.fn.count('follows.follower_id').as('cnt'))
-      .where('users.username', '=', identifier)
+      .selectFrom("follows")
+      .innerJoin("actors", "actors.id", "follows.following_id")
+      .innerJoin("users", "users.id", "actors.user_id")
+      .select((eb) => eb.fn.count("follows.follower_id").as("cnt"))
+      .where("users.username", "=", identifier)
       .executeTakeFirst();
     return result == null ? 0 : Number(result.cnt);
   });
@@ -335,25 +357,24 @@ federation.setObjectDispatcher(
   "/users/{identifier}/posts/{id}",
   async (ctx, values) => {
     const post = await db
-      .selectFrom('posts')
-      .innerJoin('actors', 'actors.id', 'posts.actor_id')
-      .innerJoin('users', 'users.id', 'actors.user_id')
-      .selectAll('posts')
-      .where('users.username', '=', values.identifier)
-      .where('posts.id', '=', Number(values.id))
+      .selectFrom("posts")
+      .innerJoin("actors", "actors.id", "posts.actor_id")
+      .innerJoin("users", "users.id", "actors.user_id")
+      .selectAll("posts")
+      .where("users.username", "=", values.identifier)
+      .where("posts.id", "=", Number(values.id))
       .executeTakeFirst();
     if (post == null) return null;
-
 
     // Parse mentions and create tags field
     const mentionedUsernames = parseMentions(post.content);
     const mentionedActors = await findMentionedUsers(mentionedUsernames);
-    
-    const tags = mentionedActors.map(actor => {
+
+    const tags = mentionedActors.map((actor) => {
       // Create ActivityPub-compliant Mention objects
       return new Mention({
         href: new URL(actor.uri),
-        name: actor.handle.startsWith('@') ? actor.handle : `@${actor.handle}`,
+        name: actor.handle.startsWith("@") ? actor.handle : `@${actor.handle}`,
       });
     });
 
@@ -376,35 +397,41 @@ async function persistActor(actor: APActor): Promise<Actor | null> {
     logger.debug("Actor is missing required fields: {actor}", { actor });
     return null;
   }
-  return await db
-    .insertInto('actors')
-    .values({
-      uri: actor.id.href,
-      handle: await getActorHandle(actor),
-      name: actor.name?.toString() ?? null,
-      inbox_url: actor.inboxId.href,
-      shared_inbox_url: actor.endpoints?.sharedInbox?.href ?? null,
-      url: actor.url instanceof URL ? actor.url.href : (typeof actor.url === 'string' ? actor.url : null),
-    })
-    .onConflict((oc) => oc
-      .column('uri')
-      .doUpdateSet({
-        handle: (eb) => eb.ref('excluded.handle'),
-        name: (eb) => eb.ref('excluded.name'),
-        inbox_url: (eb) => eb.ref('excluded.inbox_url'),
-        shared_inbox_url: (eb) => eb.ref('excluded.shared_inbox_url'),
-        url: (eb) => eb.ref('excluded.url'),
+  return (
+    (await db
+      .insertInto("actors")
+      .values({
+        uri: actor.id.href,
+        handle: await getActorHandle(actor),
+        name: actor.name?.toString() ?? null,
+        inbox_url: actor.inboxId.href,
+        shared_inbox_url: actor.endpoints?.sharedInbox?.href ?? null,
+        url:
+          actor.url instanceof URL
+            ? actor.url.href
+            : typeof actor.url === "string"
+              ? actor.url
+              : null,
       })
-    )
-    .returningAll()
-    .executeTakeFirst() ?? null;
+      .onConflict((oc) =>
+        oc.column("uri").doUpdateSet({
+          handle: (eb) => eb.ref("excluded.handle"),
+          name: (eb) => eb.ref("excluded.name"),
+          inbox_url: (eb) => eb.ref("excluded.inbox_url"),
+          shared_inbox_url: (eb) => eb.ref("excluded.shared_inbox_url"),
+          url: (eb) => eb.ref("excluded.url"),
+        }),
+      )
+      .returningAll()
+      .executeTakeFirst()) ?? null
+  );
 }
 
 // Function to send Undo Follow activity
 export async function sendUndoFollow(
   ctx: RequestContext<unknown>,
   identifier: string,
-  targetActorUri: string
+  targetActorUri: string,
 ): Promise<void> {
   try {
     // Create the original Follow activity to undo
@@ -424,12 +451,12 @@ export async function sendUndoFollow(
     await ctx.sendActivity(
       { identifier },
       (await ctx.getActor(identifier))!,
-      undoActivity
+      undoActivity,
     );
 
     logger.info("Sent Undo Follow activity from {username} to {target}", {
       identifier,
-      target: targetActorUri
+      target: targetActorUri,
     });
   } catch (error) {
     logger.error("Failed to send Undo Follow activity: {error}", { error });

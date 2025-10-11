@@ -1,4 +1,4 @@
-import type { Generated, Insertable, Selectable, Updateable } from 'kysely';
+import type { Generated, Insertable, Selectable, Updateable } from "kysely";
 
 // Database table type definitions - following Kysely best practices
 export interface UsersTable {
@@ -27,7 +27,7 @@ export interface ActorsTable {
 
 export interface KeysTable {
   user_id: number;
-  type: 'RSASSA-PKCS1-v1_5' | 'Ed25519';
+  type: "RSASSA-PKCS1-v1_5" | "Ed25519";
   private_key: string;
   public_key: string;
   created: Generated<string>; // Database auto-generated timestamp
@@ -58,7 +58,7 @@ export interface MentionsTable {
 export interface NotificationsTable {
   id: Generated<number>; // Auto-incrementing primary key
   recipient_actor_id: number; // Notification recipient user ID (foreign key to actors.id)
-  type: 'mention' | 'follow' | 'like'; // Notification type
+  type: "mention" | "follow" | "like"; // Notification type
   related_post_id: number | null; // Related post ID (nullable, foreign key to posts.id)
   related_actor_id: number | null; // Related user ID (nullable, foreign key to actors.id)
   message: string; // Notification message content

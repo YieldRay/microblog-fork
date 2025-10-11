@@ -1,4 +1,4 @@
-import type { FC } from "hono/jsx";
+import type { FC, PropsWithChildren } from "hono/jsx";
 import type { Actor, Post, User, Notification } from "./database.ts";
 import { sanitizeActivityPubContent, escapeHtml } from "./security.ts";
 import { Temporal } from "@js-temporal/polyfill";
@@ -16,17 +16,16 @@ import {
   NotificationBadge as NotificationBadgeComponent,
   HeaderImage,
   LinkButton,
-  PageMessage
+  PageMessage,
 } from "./components.tsx";
 
-export interface PageHeaderProps {
+export type PageHeaderProps = PropsWithChildren<{
   title: string;
   subtitle?: string;
   showHomeButton?: boolean;
   backUrl?: string;
   backText?: string;
-  children?: any;
-}
+}>;
 
 export const PageHeader: FC<PageHeaderProps> = ({
   title,
@@ -34,7 +33,7 @@ export const PageHeader: FC<PageHeaderProps> = ({
   showHomeButton = true,
   backUrl,
   backText = "Back",
-  children
+  children,
 }) => (
   <Flex justify="between" align="center" className="mb-6">
     <div>
@@ -67,7 +66,9 @@ export const Layout: FC = (props) => (
       <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     </head>
     <body class="bg-slate-50 min-h-screen">
-      <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">{props.children}</main>
+      <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {props.children}
+      </main>
     </body>
   </html>
 );
@@ -77,7 +78,11 @@ export interface HomeProps extends PostListProps {
   unreadNotificationCount?: number;
 }
 
-export const Home: FC<HomeProps> = ({ user, posts, unreadNotificationCount = 0 }) => (
+export const Home: FC<HomeProps> = ({
+  user,
+  posts,
+  unreadNotificationCount = 0,
+}) => (
   <>
     <Flex justify="between" align="center" className="mb-8">
       <div>
@@ -85,7 +90,10 @@ export const Home: FC<HomeProps> = ({ user, posts, unreadNotificationCount = 0 }
           {escapeHtml(user.name || user.username)}'s microblog
         </h1>
         <p class="text-slate-600">
-          <a href={`/users/${escapeHtml(user.username)}`} class="text-blue-600 hover:text-blue-800 hover:underline">
+          <a
+            href={`/users/${escapeHtml(user.username)}`}
+            class="text-blue-600 hover:text-blue-800 hover:underline"
+          >
             {escapeHtml(user.name || user.username)}'s profile
           </a>
         </p>
@@ -101,9 +109,13 @@ export const Home: FC<HomeProps> = ({ user, posts, unreadNotificationCount = 0 }
         </form>
       </Flex>
     </Flex>
-    
+
     <Card className="mb-8">
-      <form method="post" action={`/users/${escapeHtml(user.username)}/posts`} class="space-y-4">
+      <form
+        method="post"
+        action={`/users/${escapeHtml(user.username)}/posts`}
+        class="space-y-4"
+      >
         <FormField>
           <Textarea
             name="content"
@@ -118,19 +130,18 @@ export const Home: FC<HomeProps> = ({ user, posts, unreadNotificationCount = 0 }
         </Button>
       </form>
     </Card>
-    
+
     <PostList posts={posts} />
   </>
 );
 
-
 export const LoginForm: FC<{ error?: string }> = ({ error }) => {
   const getErrorMessage = (errorCode?: string) => {
     switch (errorCode) {
-      case 'invalid_input':
-        return 'Please provide both username and password.';
-      case 'invalid_credentials':
-        return 'Invalid username or password. Please try again.';
+      case "invalid_input":
+        return "Please provide both username and password.";
+      case "invalid_credentials":
+        return "Invalid username or password. Please try again.";
       default:
         return null;
     }
@@ -144,37 +155,31 @@ export const LoginForm: FC<{ error?: string }> = ({ error }) => {
         <h1 class="text-2xl font-bold text-slate-900 text-center mb-6">
           Login to your microblog
         </h1>
-        
+
         {errorMessage && (
           <ErrorMessage message={errorMessage} className="mb-6" />
         )}
-        
+
         <form method="post" action="/login" class="space-y-6">
           <FormField label="Username" required>
-            <Input
-              type="text"
-              name="username"
-              required
-              maxlength={50}
-            />
+            <Input type="text" name="username" required maxlength={50} />
           </FormField>
-          
+
           <FormField label="Password" required>
-            <Input
-              type="password"
-              name="password"
-              required
-            />
+            <Input type="password" name="password" required />
           </FormField>
-          
+
           <Button type="submit" variant="primary" className="w-full">
             Login
           </Button>
         </form>
-        
+
         <p class="mt-6 text-center text-slate-600">
           Don't have an account?{" "}
-          <a href="/register" class="text-blue-600 hover:text-blue-800 hover:underline">
+          <a
+            href="/register"
+            class="text-blue-600 hover:text-blue-800 hover:underline"
+          >
             Register here
           </a>
         </p>
@@ -189,7 +194,7 @@ export const RegisterForm: FC = () => (
       <h1 class="text-2xl font-bold text-slate-900 text-center mb-6">
         Register for a microblog
       </h1>
-      
+
       <form method="post" action="/register" class="space-y-6">
         <FormField label="Username" required>
           <Input
@@ -201,7 +206,7 @@ export const RegisterForm: FC = () => (
             placeholder="lowercase letters, numbers, _ and - only"
           />
         </FormField>
-        
+
         <FormField label="Display Name" required>
           <Input
             type="text"
@@ -210,7 +215,7 @@ export const RegisterForm: FC = () => (
             placeholder="Your display name"
           />
         </FormField>
-        
+
         <FormField label="Password" required>
           <Input
             type="password"
@@ -220,7 +225,7 @@ export const RegisterForm: FC = () => (
             placeholder="At least 8 characters"
           />
         </FormField>
-        
+
         <FormField label="Confirm Password" required>
           <Input
             type="password"
@@ -230,15 +235,18 @@ export const RegisterForm: FC = () => (
             placeholder="Confirm your password"
           />
         </FormField>
-        
+
         <Button type="submit" variant="primary" className="w-full">
           Register
         </Button>
       </form>
-      
+
       <p class="mt-6 text-center text-slate-600">
         Already have an account?{" "}
-        <a href="/login" class="text-blue-600 hover:text-blue-800 hover:underline">
+        <a
+          href="/login"
+          class="text-blue-600 hover:text-blue-800 hover:underline"
+        >
           Login here
         </a>
       </p>
@@ -258,7 +266,7 @@ export const ProfileEditForm: FC<ProfileEditFormProps> = ({ user }) => (
         backUrl={`/users/${user.username}`}
         backText="Back to Profile"
       />
-      
+
       <form
         method="post"
         action={`/users/${escapeHtml(user.username)}/profile`}
@@ -269,47 +277,43 @@ export const ProfileEditForm: FC<ProfileEditFormProps> = ({ user }) => (
           <Input
             type="text"
             name="name"
-            value={user.name || ''}
+            value={user.name || ""}
             maxlength={100}
             placeholder="Your display name"
           />
         </FormField>
-        
+
         <FormField label="Bio">
           <Textarea
             name="bio"
             placeholder="Tell us about yourself..."
             maxlength={500}
             rows={4}
-            value={user.bio || ''}
+            value={user.bio || ""}
           />
         </FormField>
-        
+
         <FormField label="Location">
           <Input
             type="text"
             name="location"
-            value={user.location || ''}
+            value={user.location || ""}
             placeholder="Where are you located?"
             maxlength={100}
           />
         </FormField>
-        
+
         <FormField label="Website">
           <Input
             type="url"
             name="website"
-            value={user.website || ''}
+            value={user.website || ""}
             placeholder="https://example.com"
           />
         </FormField>
-        
+
         <FormField label="Avatar">
-          <Input
-            type="file"
-            name="avatar"
-            accept="image/*"
-          />
+          <Input type="file" name="avatar" accept="image/*" />
           {user.avatar_data && (
             <div class="mt-3">
               <p class="text-sm text-slate-600 mb-2">Current avatar:</p>
@@ -317,13 +321,9 @@ export const ProfileEditForm: FC<ProfileEditFormProps> = ({ user }) => (
             </div>
           )}
         </FormField>
-        
+
         <FormField label="Header Image">
-          <Input
-            type="file"
-            name="header"
-            accept="image/*"
-          />
+          <Input type="file" name="header" accept="image/*" />
           {user.header_data && (
             <div class="mt-3">
               <p class="text-sm text-slate-600 mb-2">Current header:</p>
@@ -335,7 +335,7 @@ export const ProfileEditForm: FC<ProfileEditFormProps> = ({ user }) => (
             </div>
           )}
         </FormField>
-        
+
         <Flex gap="4" className="pt-4">
           <Button type="submit" variant="primary">
             Save Changes
@@ -385,7 +385,7 @@ export const ProfileCard: FC<ProfileCardProps> = ({
         <HeaderImage src={header_data} alt="Profile header" />
       </div>
     )}
-    
+
     <Card className="mb-6">
       <Flex align="start" gap="4" className="mb-4">
         <Avatar src={avatar_data || undefined} alt="Avatar" size="xl" />
@@ -414,11 +414,11 @@ export const ProfileCard: FC<ProfileCardProps> = ({
           </p>
         </div>
       </Flex>
-      
+
       {bio && (
         <p class="text-slate-700 mb-4 whitespace-pre-wrap">{escapeHtml(bio)}</p>
       )}
-      
+
       <Flex gap="6" wrap className="mb-4 text-sm text-slate-600">
         {location && (
           <span class="flex items-center gap-1">
@@ -440,13 +440,14 @@ export const ProfileCard: FC<ProfileCardProps> = ({
           </span>
         )}
       </Flex>
-      
+
       <Flex gap="6" className="text-sm">
         <a
           href={`/users/${username}/following`}
           class="text-slate-700 hover:text-blue-600 hover:underline"
         >
-          <span class="font-semibold text-slate-900">{following}</span> following
+          <span class="font-semibold text-slate-900">{following}</span>{" "}
+          following
         </a>
         <a
           href={`/users/${username}/followers`}
@@ -464,11 +465,7 @@ export interface ProfileProps extends ProfileCardProps {}
 
 export const Profile: FC<ProfileProps> = (props) => (
   <>
-    <PageHeader
-      title="Profile"
-      backUrl="/"
-      backText="Back to Home"
-    />
+    <PageHeader title="Profile" backUrl="/" backText="Back to Home" />
     <ProfileCard {...props} />
   </>
 );
@@ -479,7 +476,11 @@ export interface FollowingListProps {
   isOwnProfile?: boolean;
 }
 
-export const FollowingList: FC<FollowingListProps> = ({ following, username, isOwnProfile = false }) => (
+export const FollowingList: FC<FollowingListProps> = ({
+  following,
+  username,
+  isOwnProfile = false,
+}) => (
   <>
     <PageHeader
       title="Following"
@@ -488,7 +489,11 @@ export const FollowingList: FC<FollowingListProps> = ({ following, username, isO
     />
     {isOwnProfile && username && (
       <Card className="mb-6">
-        <form method="post" action={`/users/${escapeHtml(username)}/following`} class="space-y-4">
+        <form
+          method="post"
+          action={`/users/${escapeHtml(username)}/following`}
+          class="space-y-4"
+        >
           <FormField label="Follow someone">
             <Flex gap="2">
               <Input
@@ -517,17 +522,26 @@ export const FollowingList: FC<FollowingListProps> = ({ following, username, isO
           {following.map((actor) => (
             <div key={actor.id} class="flex items-center justify-between py-2">
               <div class="flex items-center gap-3">
-                <Avatar src={actor.avatar_data || undefined} alt="Avatar" size="sm" />
+                <Avatar
+                  src={actor.avatar_data || undefined}
+                  alt="Avatar"
+                  size="sm"
+                />
                 <ActorLink actor={actor} />
               </div>
               {isOwnProfile && username && (
-                <form method="post" action={`/users/${escapeHtml(username)}/unfollow`}>
+                <form
+                  method="post"
+                  action={`/users/${escapeHtml(username)}/unfollow`}
+                >
                   <input type="hidden" name="actorId" value={actor.id} />
                   <Button
                     type="submit"
                     variant="outline"
                     size="sm"
-                    onClick={() => confirm('Are you sure you want to unfollow this user?')}
+                    onClick={() =>
+                      confirm("Are you sure you want to unfollow this user?")
+                    }
                   >
                     Unfollow
                   </Button>
@@ -546,7 +560,10 @@ export interface FollowerListProps {
   username?: string;
 }
 
-export const FollowerList: FC<FollowerListProps> = ({ followers, username }) => (
+export const FollowerList: FC<FollowerListProps> = ({
+  followers,
+  username,
+}) => (
   <>
     <PageHeader
       title="Followers"
@@ -563,7 +580,11 @@ export const FollowerList: FC<FollowerListProps> = ({ followers, username }) => 
         <div class="space-y-4">
           {followers.map((follower) => (
             <div key={follower.id} class="flex items-center gap-3 py-2">
-              <Avatar src={follower.avatar_data || undefined} alt="Avatar" size="sm" />
+              <Avatar
+                src={follower.avatar_data || undefined}
+                alt="Avatar"
+                size="sm"
+              />
               <ActorLink actor={follower} />
             </div>
           ))}
@@ -585,12 +606,18 @@ export const ActorLink: FC<ActorLinkProps> = ({ actor }) => {
     </a>
   ) : (
     <span class="inline-flex items-center gap-1">
-      <a href={href} class="font-medium text-slate-900 hover:text-blue-600 hover:underline">
-        {escapeHtml(actor.name || '')}
+      <a
+        href={href}
+        class="font-medium text-slate-900 hover:text-blue-600 hover:underline"
+      >
+        {escapeHtml(actor.name || "")}
       </a>
       <span class="text-sm text-slate-500">
         (
-        <a href={href} class="text-slate-500 hover:text-blue-600 hover:underline">
+        <a
+          href={href}
+          class="text-slate-500 hover:text-blue-600 hover:underline"
+        >
           {escapeHtml(actor.handle)}
         </a>
         )
@@ -608,10 +635,10 @@ export const PostActorLink: FC<PostActorLinkProps> = ({ actor }) => {
     <span class="text-slate-600">{escapeHtml(actor.handle)}</span>
   ) : (
     <span class="inline-flex items-center gap-1">
-      <span class="font-medium text-slate-900">{escapeHtml(actor.name || '')}</span>
-      <span class="text-sm text-slate-500">
-        ({escapeHtml(actor.handle)})
+      <span class="font-medium text-slate-900">
+        {escapeHtml(actor.name || "")}
       </span>
+      <span class="text-sm text-slate-500">({escapeHtml(actor.handle)})</span>
     </span>
   );
 };
@@ -652,7 +679,7 @@ export const PostView: FC<PostViewProps> = ({ post }) => {
   const processedContent = sanitizeActivityPubContent(contentWithMentions);
 
   // get username from handle
-  const username = post.handle.split('@')[1];
+  const username = post.handle.split("@")[1];
   const postUrl = `/users/${username}/posts/${post.id}`;
 
   return (
@@ -668,13 +695,17 @@ export const PostView: FC<PostViewProps> = ({ post }) => {
           </div>
           <div
             class="prose prose-sm max-w-none text-slate-900"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: use with sanitized content
             dangerouslySetInnerHTML={{ __html: processedContent }}
           />
         </div>
       </Flex>
       <div class="text-sm text-slate-500 border-t border-slate-100 pt-3">
-        <time datetime={Temporal.Instant.from(post.created + 'Z').toString()}>
-          {Temporal.Instant.from(post.created + 'Z').toZonedDateTimeISO('UTC').toPlainDateTime().toLocaleString()}
+        <time datetime={Temporal.Instant.from(`${post.created}Z`).toString()}>
+          {Temporal.Instant.from(`${post.created}Z`)
+            .toZonedDateTimeISO("UTC")
+            .toPlainDateTime()
+            .toLocaleString()}
         </time>
       </div>
     </div>
@@ -695,9 +726,7 @@ export const PostList: FC<PostListProps> = ({ posts }) => (
         </div>
       </Card>
     ) : (
-      posts.map((post) => (
-        <PostView key={post.id} post={post} />
-      ))
+      posts.map((post) => <PostView key={post.id} post={post} />)
     )}
   </div>
 );
@@ -714,17 +743,19 @@ export interface NotificationItemProps {
   };
 }
 
-export const NotificationItem: FC<NotificationItemProps> = ({ notification }) => {
+export const NotificationItem: FC<NotificationItemProps> = ({
+  notification,
+}) => {
   const formatTime = (timestamp: string) => {
     const notificationTime = Temporal.Instant.from(timestamp);
     const now = Temporal.Now.instant();
     const duration = now.since(notificationTime);
-    
-    const totalMinutes = duration.total('minutes');
-    const totalHours = duration.total('hours');
-    const totalDays = duration.total('days');
 
-    if (totalMinutes < 1) return 'just now';
+    const totalMinutes = duration.total("minutes");
+    const totalHours = duration.total("hours");
+    const totalDays = duration.total("days");
+
+    if (totalMinutes < 1) return "just now";
     if (totalMinutes < 60) return `${Math.floor(totalMinutes)} minutes ago`;
     if (totalHours < 24) return `${Math.floor(totalHours)} hours ago`;
     return `${Math.floor(totalDays)} days ago`;
@@ -732,19 +763,24 @@ export const NotificationItem: FC<NotificationItemProps> = ({ notification }) =>
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
-      case 'mention': return '💬';
-      case 'follow': return '👤';
-      case 'like': return '❤️';
-      default: return '📢';
+      case "mention":
+        return "💬";
+      case "follow":
+        return "👤";
+      case "like":
+        return "❤️";
+      default:
+        return "📢";
     }
   };
 
   return (
     <Card
       variant="notification"
-      className={`mb-4 ${notification.is_read
-        ? 'border-l-slate-300 bg-slate-50'
-        : 'border-l-blue-500 bg-white'
+      className={`mb-4 ${
+        notification.is_read
+          ? "border-l-slate-300 bg-slate-50"
+          : "border-l-blue-500 bg-white"
       }`}
     >
       <Flex align="start" gap="3" className="mb-3">
@@ -755,19 +791,30 @@ export const NotificationItem: FC<NotificationItemProps> = ({ notification }) =>
         />
         <div class="flex-1 min-w-0">
           <Flex align="center" gap="2" className="mb-2">
-            <span class="text-lg">{getNotificationIcon(notification.type)}</span>
-            <span class="font-semibold text-slate-900">
-              {escapeHtml(notification.related_actor_name || notification.related_actor_handle || 'Unknown user')}
+            <span class="text-lg">
+              {getNotificationIcon(notification.type)}
             </span>
-            <span class="text-sm text-slate-500">{formatTime(notification.created)}</span>
+            <span class="font-semibold text-slate-900">
+              {escapeHtml(
+                notification.related_actor_name ||
+                  notification.related_actor_handle ||
+                  "Unknown user",
+              )}
+            </span>
+            <span class="text-sm text-slate-500">
+              {formatTime(notification.created)}
+            </span>
           </Flex>
           <p class="text-slate-700 mb-3">{escapeHtml(notification.message)}</p>
-          
+
           {notification.post_content && (
             <div class="bg-slate-50 border-l-4 border-blue-500 p-3 rounded-r-md">
               <div
                 class="prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: sanitizeActivityPubContent(notification.post_content) }}
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: use with sanitized content
+                dangerouslySetInnerHTML={{
+                  __html: sanitizeActivityPubContent(notification.post_content),
+                }}
               />
               {notification.post_uri && (
                 <div class="mt-2">
@@ -782,14 +829,17 @@ export const NotificationItem: FC<NotificationItemProps> = ({ notification }) =>
             </div>
           )}
         </div>
-        
+
         <Flex align="center" gap="2">
           {!notification.is_read && (
             <div class="w-2 h-2 bg-blue-500 rounded-full"></div>
           )}
           <Flex gap="1">
             {!notification.is_read && (
-              <form method="post" action={`/notifications/${notification.id}/read`}>
+              <form
+                method="post"
+                action={`/notifications/${notification.id}/read`}
+              >
                 <button
                   type="submit"
                   class="text-xs text-blue-600 hover:text-blue-800 hover:underline bg-none border-none cursor-pointer p-1"
@@ -798,7 +848,10 @@ export const NotificationItem: FC<NotificationItemProps> = ({ notification }) =>
                 </button>
               </form>
             )}
-            <form method="post" action={`/notifications/${notification.id}/delete`}>
+            <form
+              method="post"
+              action={`/notifications/${notification.id}/delete`}
+            >
               <button
                 type="submit"
                 class="text-xs text-red-600 hover:text-red-800 hover:underline bg-none border-none cursor-pointer p-1"
@@ -824,7 +877,9 @@ export interface NotificationListProps {
   })[];
 }
 
-export const NotificationList: FC<NotificationListProps> = ({ notifications }) => (
+export const NotificationList: FC<NotificationListProps> = ({
+  notifications,
+}) => (
   <div class="space-y-4">
     {notifications.length === 0 ? (
       <Card className="text-center py-12">
@@ -858,15 +913,15 @@ export const NotificationPage: FC<NotificationPageProps> = ({
   notifications,
   currentPage = 1,
   totalPages = 1,
-  total = 0
+  total = 0,
 }) => {
-  const hasUnreadNotifications = notifications.some(n => !n.is_read);
-  
+  const hasUnreadNotifications = notifications.some((n) => !n.is_read);
+
   return (
     <>
       <PageHeader
         title="Notifications"
-        subtitle={`View your latest notifications ${total > 0 ? `(${total} total)` : ''}`}
+        subtitle={`View your latest notifications ${total > 0 ? `(${total} total)` : ""}`}
       >
         {hasUnreadNotifications && (
           <form method="post" action="/notifications/mark-all-read">
@@ -880,16 +935,18 @@ export const NotificationPage: FC<NotificationPageProps> = ({
             <Button
               type="submit"
               variant="secondary"
-              onClick={() => confirm('Are you sure you want to clear all notifications?')}
+              onClick={() =>
+                confirm("Are you sure you want to clear all notifications?")
+              }
             >
               Clear all
             </Button>
           </form>
         )}
       </PageHeader>
-      
+
       <NotificationList notifications={notifications} />
-      
+
       {totalPages > 1 && (
         <Flex justify="center" align="center" gap="4" className="mt-8">
           {currentPage > 1 && (
@@ -897,22 +954,31 @@ export const NotificationPage: FC<NotificationPageProps> = ({
               <LinkButton href="/notifications?page=1" variant="outline">
                 First
               </LinkButton>
-              <LinkButton href={`/notifications?page=${currentPage - 1}`} variant="outline">
+              <LinkButton
+                href={`/notifications?page=${currentPage - 1}`}
+                variant="outline"
+              >
                 Previous
               </LinkButton>
             </>
           )}
-          
+
           <span class="px-4 text-slate-600">
             Page {currentPage} of {totalPages}
           </span>
-          
+
           {currentPage < totalPages && (
             <>
-              <LinkButton href={`/notifications?page=${currentPage + 1}`} variant="outline">
+              <LinkButton
+                href={`/notifications?page=${currentPage + 1}`}
+                variant="outline"
+              >
                 Next
               </LinkButton>
-              <LinkButton href={`/notifications?page=${totalPages}`} variant="outline">
+              <LinkButton
+                href={`/notifications?page=${totalPages}`}
+                variant="outline"
+              >
                 Last
               </LinkButton>
             </>
@@ -938,12 +1004,16 @@ export interface MentionHighlightProps {
 
 export const MentionHighlight: FC<MentionHighlightProps> = ({ content }) => {
   const highlightedContent = highlightMentions(content);
-  
+
   return (
-    <span dangerouslySetInnerHTML={{ __html: sanitizeActivityPubContent(highlightedContent) }} />
+    <span
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: use with sanitized content
+      dangerouslySetInnerHTML={{
+        __html: sanitizeActivityPubContent(highlightedContent),
+      }}
+    />
   );
 };
-
 
 export interface MessagePageProps {
   title: string;
@@ -964,20 +1034,19 @@ export const MessagePage: FC<MessagePageProps> = ({
   type = "info",
   backUrl = "/",
   backText = "Back to Home",
-  actions = []
+  actions = [],
 }) => {
-  const defaultActions = actions.length > 0 ? actions : [
-    { text: backText, href: backUrl, variant: "primary" as const }
-  ];
+  const defaultActions =
+    actions.length > 0
+      ? actions
+      : [{ text: backText, href: backUrl, variant: "primary" as const }];
 
   return (
-    <>
-      <PageMessage
-        title={title}
-        message={message}
-        type={type}
-        actions={defaultActions}
-      />
-    </>
+    <PageMessage
+      title={title}
+      message={message}
+      type={type}
+      actions={defaultActions}
+    />
   );
 };
