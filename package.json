@@ -1,4 +1,7 @@
 {
+  "name": "microblog",
+  "private": true,
+  "version": "0.0.0",
   "type": "module",
   "dependencies": {
     "@fedify/fedify": "^1.8.13",
