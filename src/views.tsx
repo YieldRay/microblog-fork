@@ -1,6 +1,6 @@
 import type { FC } from "hono/jsx";
 import type { Actor, Post, User, Notification } from "./database.ts";
-import { sanitizeActivityPubContent, escapeHtml, processContentByMediaType } from "./security.ts";
+import { sanitizeActivityPubContent, escapeHtml } from "./security.ts";
 import { Temporal } from "@js-temporal/polyfill";
 import { highlightMentions } from "./mentions.ts";
 import {
@@ -15,13 +15,16 @@ import {
   FormField,
   NotificationBadge as NotificationBadgeComponent,
   HeaderImage,
-  LinkButton
+  LinkButton,
+  PageMessage
 } from "./components.tsx";
 
 export interface PageHeaderProps {
   title: string;
   subtitle?: string;
   showHomeButton?: boolean;
+  backUrl?: string;
+  backText?: string;
   children?: any;
 }
 
@@ -29,6 +32,8 @@ export const PageHeader: FC<PageHeaderProps> = ({
   title,
   subtitle,
   showHomeButton = true,
+  backUrl,
+  backText = "Back",
   children
 }) => (
   <Flex justify="between" align="center" className="mb-6">
@@ -38,6 +43,11 @@ export const PageHeader: FC<PageHeaderProps> = ({
     </div>
     <Flex gap="3" align="center">
       {children}
+      {backUrl && (
+        <LinkButton href={backUrl} variant="outline" size="sm">
+          ← {backText}
+        </LinkButton>
+      )}
       {showHomeButton && (
         <LinkButton href="/" variant="secondary" size="sm">
           🏠 Home
@@ -243,7 +253,11 @@ export interface ProfileEditFormProps {
 export const ProfileEditForm: FC<ProfileEditFormProps> = ({ user }) => (
   <Container maxWidth="md">
     <Card className="mt-8">
-      <PageHeader title="Edit Profile" />
+      <PageHeader
+        title="Edit Profile"
+        backUrl={`/users/${user.username}`}
+        backText="Back to Profile"
+      />
       
       <form
         method="post"
@@ -450,7 +464,11 @@ export interface ProfileProps extends ProfileCardProps {}
 
 export const Profile: FC<ProfileProps> = (props) => (
   <>
-    <PageHeader title="Profile" />
+    <PageHeader
+      title="Profile"
+      backUrl="/"
+      backText="Back to Home"
+    />
     <ProfileCard {...props} />
   </>
 );
@@ -463,7 +481,11 @@ export interface FollowingListProps {
 
 export const FollowingList: FC<FollowingListProps> = ({ following, username, isOwnProfile = false }) => (
   <>
-    <PageHeader title="Following" />
+    <PageHeader
+      title="Following"
+      backUrl={username ? `/users/${username}` : "/"}
+      backText="Back to Profile"
+    />
     {isOwnProfile && username && (
       <Card className="mb-6">
         <form method="post" action={`/users/${escapeHtml(username)}/following`} class="space-y-4">
@@ -521,11 +543,16 @@ export const FollowingList: FC<FollowingListProps> = ({ following, username, isO
 
 export interface FollowerListProps {
   followers: Actor[];
+  username?: string;
 }
 
-export const FollowerList: FC<FollowerListProps> = ({ followers }) => (
+export const FollowerList: FC<FollowerListProps> = ({ followers, username }) => (
   <>
-    <PageHeader title="Followers" />
+    <PageHeader
+      title="Followers"
+      backUrl={username ? `/users/${username}` : "/"}
+      backText="Back to Profile"
+    />
     <Card>
       {followers.length === 0 ? (
         <div class="text-center py-8 text-slate-500">
@@ -572,7 +599,6 @@ export const ActorLink: FC<ActorLinkProps> = ({ actor }) => {
   );
 };
 
-// PostActorLink 组件 - 用于帖子内部，不生成链接以避免嵌套链接问题
 export interface PostActorLinkProps {
   actor: Actor;
 }
@@ -594,7 +620,11 @@ export interface PostPageProps extends ProfileProps, PostViewProps {}
 
 export const PostPage: FC<PostPageProps> = (props) => (
   <>
-    <PageHeader title="Post" />
+    <PageHeader
+      title="Post"
+      backUrl={`/users/${props.username}`}
+      backText="Back to Profile"
+    />
     <ProfileCard
       name={props.name}
       username={props.username}
@@ -617,21 +647,11 @@ export interface PostViewProps {
 }
 
 export const PostView: FC<PostViewProps> = ({ post }) => {
-  // Process content based on mediaType
-  const mediaType = post.media_type || 'text/plain';
-  let processedContent: string;
-  
-  if (mediaType === 'text/html') {
-    // For HTML content, highlight mentions first, then sanitize
-    const contentWithMentions = highlightMentions(post.content);
-    processedContent = sanitizeActivityPubContent(contentWithMentions);
-  } else {
-    // For non-HTML content, process by mediaType first, then highlight mentions
-    const baseProcessed = processContentByMediaType(post.content, mediaType);
-    processedContent = highlightMentions(baseProcessed);
-  }
+  // Process content as HTML - highlight mentions first, then sanitize
+  const contentWithMentions = highlightMentions(post.content);
+  const processedContent = sanitizeActivityPubContent(contentWithMentions);
 
-  // 从 handle 中提取用户名 (格式: @username@domain)
+  // get username from handle
   const username = post.handle.split('@')[1];
   const postUrl = `/users/${username}/posts/${post.id}`;
 
@@ -747,7 +767,7 @@ export const NotificationItem: FC<NotificationItemProps> = ({ notification }) =>
             <div class="bg-slate-50 border-l-4 border-blue-500 p-3 rounded-r-md">
               <div
                 class="prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: processContentByMediaType(notification.post_content, 'text/html') }}
+                dangerouslySetInnerHTML={{ __html: sanitizeActivityPubContent(notification.post_content) }}
               />
               {notification.post_uri && (
                 <div class="mt-2">
@@ -920,6 +940,44 @@ export const MentionHighlight: FC<MentionHighlightProps> = ({ content }) => {
   const highlightedContent = highlightMentions(content);
   
   return (
-    <span dangerouslySetInnerHTML={{ __html: processContentByMediaType(highlightedContent, 'text/html') }} />
+    <span dangerouslySetInnerHTML={{ __html: sanitizeActivityPubContent(highlightedContent) }} />
+  );
+};
+
+
+export interface MessagePageProps {
+  title: string;
+  message: string;
+  type?: "success" | "error" | "info";
+  backUrl?: string;
+  backText?: string;
+  actions?: Array<{
+    text: string;
+    href: string;
+    variant?: "primary" | "secondary" | "outline";
+  }>;
+}
+
+export const MessagePage: FC<MessagePageProps> = ({
+  title,
+  message,
+  type = "info",
+  backUrl = "/",
+  backText = "Back to Home",
+  actions = []
+}) => {
+  const defaultActions = actions.length > 0 ? actions : [
+    { text: backText, href: backUrl, variant: "primary" as const }
+  ];
+
+  return (
+    <>
+      <PageMessage
+        title={title}
+        message={message}
+        type={type}
+        actions={defaultActions}
+      />
+    </>
   );
 };

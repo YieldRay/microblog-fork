@@ -44,7 +44,6 @@ export interface PostsTable {
   uri: string;
   actor_id: number;
   content: string;
-  media_type: string; // Content media type: text/plain, text/html, text/markdown
   url: string | null;
   created: Generated<string>; // Database auto-generated timestamp
 }

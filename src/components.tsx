@@ -406,3 +406,133 @@ export const LinkButton: FC<PropsWithChildren<LinkButtonProps>> = ({
     </a>
   );
 };
+
+// 消息显示组件
+export interface MessageDisplayProps extends BaseProps {
+  title?: string;
+  message: string;
+  type?: "info" | "success" | "warning" | "error";
+  showBackButton?: boolean;
+  backUrl?: string;
+  backText?: string;
+}
+
+export const MessageDisplay: FC<MessageDisplayProps> = ({
+  title,
+  message,
+  type = "info",
+  showBackButton = true,
+  backUrl = "/",
+  backText = "返回",
+  className = ""
+}) => {
+  const typeClasses = {
+    info: "bg-blue-50 border-blue-200 text-blue-800",
+    success: "bg-green-50 border-green-200 text-green-800",
+    warning: "bg-yellow-50 border-yellow-200 text-yellow-800",
+    error: "bg-red-50 border-red-200 text-red-800"
+  };
+
+  const iconMap = {
+    info: "ℹ️",
+    success: "✅",
+    warning: "⚠️",
+    error: "❌"
+  };
+
+  return (
+    <Container maxWidth="md">
+      <Card className={`${typeClasses[type]} ${className}`}>
+        <Flex direction="col" align="center" gap="4" className="text-center py-8">
+          <div class="text-4xl mb-2">{iconMap[type]}</div>
+          
+          {title && (
+            <h1 class="text-2xl font-bold mb-2">{title}</h1>
+          )}
+          
+          <p class="text-lg leading-relaxed max-w-md">{message}</p>
+          
+          {showBackButton && (
+            <div class="mt-6">
+              <LinkButton href={backUrl} variant="primary">
+                ← {backText}
+              </LinkButton>
+            </div>
+          )}
+        </Flex>
+      </Card>
+    </Container>
+  );
+};
+
+// 页面消息组件 - 用于显示操作结果
+export interface PageMessageProps extends BaseProps {
+  title: string;
+  message: string;
+  type?: "success" | "error" | "info";
+  actions?: Array<{
+    text: string;
+    href: string;
+    variant?: "primary" | "secondary" | "outline";
+  }>;
+}
+
+export const PageMessage: FC<PageMessageProps> = ({
+  title,
+  message,
+  type = "info",
+  actions = [],
+  className = ""
+}) => {
+  const typeConfig = {
+    success: {
+      icon: "🎉",
+      bgColor: "bg-green-50",
+      borderColor: "border-green-200",
+      textColor: "text-green-800"
+    },
+    error: {
+      icon: "😞",
+      bgColor: "bg-red-50",
+      borderColor: "border-red-200",
+      textColor: "text-red-800"
+    },
+    info: {
+      icon: "💡",
+      bgColor: "bg-blue-50",
+      borderColor: "border-blue-200",
+      textColor: "text-blue-800"
+    }
+  };
+
+  const config = typeConfig[type];
+
+  return (
+    <Container maxWidth="md">
+      <Card className={`${config.bgColor} ${config.borderColor} ${config.textColor} ${className}`}>
+        <Flex direction="col" align="center" gap="6" className="text-center py-12">
+          <div class="text-6xl">{config.icon}</div>
+          
+          <div>
+            <h1 class="text-3xl font-bold mb-4">{title}</h1>
+            <p class="text-lg leading-relaxed max-w-lg">{message}</p>
+          </div>
+          
+          {actions.length > 0 && (
+            <Flex gap="4" wrap className="mt-4">
+              {actions.map((action, index) => (
+                <LinkButton
+                  key={index}
+                  href={action.href}
+                  variant={action.variant || "primary"}
+                >
+                  {action.text}
+                </LinkButton>
+              ))}
+            </Flex>
+          )}
+        </Flex>
+      </Card>
+    </Container>
+  );
+};

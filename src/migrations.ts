@@ -128,9 +128,6 @@ export async function createTables(db: Kysely<Database>): Promise<void> {
         col.notNull().references('actors.id')
       )
       .addColumn('content', 'text', (col) => col.notNull())
-      .addColumn('media_type', 'text', (col) =>
-        col.notNull().defaultTo('text/plain').check(sql`media_type IN ('text/plain', 'text/html', 'text/markdown')`)
-      )
       .addColumn('url', 'text', (col) =>
         col.check(sql`url LIKE 'https://%' OR url LIKE 'http://%'`)
       )

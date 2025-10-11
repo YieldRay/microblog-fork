@@ -228,16 +228,12 @@ federation
     if (object.id == null) return;
     const content = object.content?.toString();
     if (content != null) {
-      // Get mediaType, defaults to text/html (ActivityPub standard)
-      const mediaType = object.mediaType || 'text/html';
-      
       const insertedPost = await db
         .insertInto('posts')
         .values({
           uri: object.id.href,
           actor_id: actorId,
           content: content,
-          media_type: mediaType,
           url: object.url instanceof URL ? object.url.href : (typeof object.url === 'string' ? object.url : null),
         })
         .returningAll()
@@ -367,7 +363,7 @@ federation.setObjectDispatcher(
       to: PUBLIC_COLLECTION,
       cc: ctx.getFollowersUri(values.identifier),
       content: post.content,
-      mediaType: post.media_type || "text/html",
+      mediaType: "text/html",
       published: Temporal.Instant.from(`${post.created.replace(" ", "T")}Z`),
       url: ctx.getObjectUri(Note, values),
       tags: tags.length > 0 ? tags : undefined,

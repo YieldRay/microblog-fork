@@ -1,6 +1,6 @@
 import { federation } from "@fedify/fedify/x/hono";
 import { Hono } from "hono";
-import { sanitizeUserContent, detectMediaType } from "./security.ts";
+import { sanitizeUserContent } from "./security.ts";
 import { Update, PUBLIC_COLLECTION } from "@fedify/fedify";
 import { Temporal } from "@js-temporal/polyfill";
 import { encodeBase64 } from 'hono/utils/encode';
@@ -19,6 +19,7 @@ import {
   ProfileEditForm,
   RegisterForm,
   NotificationPage,
+  MessagePage,
 } from "./views.tsx";
 import { Create, Follow, isActor, lookupObject, Note } from "@fedify/fedify";
 import {
@@ -148,11 +149,22 @@ app.get("/users/:username", optionalAuthMiddleware, async (c) => {
     .executeTakeFirst();
   const followers = Number(followersResult?.followers ?? 0);
 
+  // Get posts for user's profile page
+  // Include both user's own posts and posts sent to the user (inbox via mentions)
   const posts = await db
     .selectFrom('posts')
     .innerJoin('actors', 'posts.actor_id', 'actors.id')
     .selectAll()
-    .where('actors.user_id', '=', user.user_id)
+    .where((eb) => eb.or([
+      // User's own posts
+      eb('actors.user_id', '=', user.user_id),
+      // Posts mentioning this user (inbox)
+      eb('posts.id', 'in',
+        eb.selectFrom('mentions')
+          .select('post_id')
+          .where('mentioned_actor_id', '=', user.id)
+      )
+    ]))
     .orderBy('posts.created', 'desc')
     .execute();
 
@@ -183,11 +195,31 @@ app.post("/users/:username/following", authMiddleware, async (c) => {
   const form = await c.req.formData();
   const handle = form.get("actor");
   if (typeof handle !== "string") {
-    return c.text("Invalid actor handle or URL", 400);
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="Invalid Input"
+          message="Please provide a valid user handle or URL."
+          type="error"
+          backUrl={`/users/${username}/following`}
+          backText="Back to Following"
+        />
+      </Layout>
+    );
   }
   const actor = await lookupObject(handle);
   if (!isActor(actor)) {
-    return c.text("Invalid actor handle or URL", 400);
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="User Not Found"
+          message="Unable to find the specified user. Please check if the user handle or URL is correct."
+          type="error"
+          backUrl={`/users/${username}/following`}
+          backText="Back to Following"
+        />
+      </Layout>
+    );
   }
   const ctx = fedi.createContext(c.req.raw, undefined);
   await ctx.sendActivity(
@@ -199,7 +231,17 @@ app.post("/users/:username/following", authMiddleware, async (c) => {
       to: actor.id,
     }),
   );
-  return c.text("Successfully sent a follow request");
+  return c.html(
+    <Layout>
+      <MessagePage
+        title="Follow Request Sent"
+        message="Your follow request has been sent successfully. Waiting for confirmation."
+        type="success"
+        backUrl={`/users/${username}/following`}
+        backText="Back to Following"
+      />
+    </Layout>
+  );
 });
 
 // Unfollow route
@@ -215,7 +257,17 @@ app.post("/users/:username/unfollow", authMiddleware, async (c) => {
   const actorId = form.get("actorId");
   
   if (typeof actorId !== "string") {
-    return c.text("Invalid actor ID", 400);
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="Operation Failed"
+          message="Invalid user ID. Unable to perform unfollow operation."
+          type="error"
+          backUrl={`/users/${username}/following`}
+          backText="Back to Following"
+        />
+      </Layout>
+    );
   }
   
   // Get current user's actor
@@ -226,7 +278,17 @@ app.post("/users/:username/unfollow", authMiddleware, async (c) => {
     .executeTakeFirst();
     
   if (!currentUserActor) {
-    return c.text("User not found", 404);
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="User Not Found"
+          message="Current user information not found. Please log in again."
+          type="error"
+          backUrl="/login"
+          backText="Login Again"
+        />
+      </Layout>
+    );
   }
   
   // Get the target actor's URI for ActivityPub
@@ -279,18 +341,19 @@ app.get("/users/:username/following", optionalAuthMiddleware, async (c) => {
 });
 
 app.get("/users/:username/followers", async (c) => {
+  const username = c.req.param("username");
   const followers = await db
     .selectFrom('follows')
     .innerJoin('actors as followers', 'follows.follower_id', 'followers.id')
     .innerJoin('actors as following', 'follows.following_id', 'following.id')
     .innerJoin('users', 'users.id', 'following.user_id')
     .selectAll('followers')
-    .where('users.username', '=', c.req.param("username"))
+    .where('users.username', '=', username)
     .orderBy('follows.created', 'desc')
     .execute();
   return c.html(
     <Layout>
-      <FollowerList followers={followers} />
+      <FollowerList followers={followers} username={username} />
     </Layout>,
   );
 });
@@ -303,12 +366,22 @@ app.post("/users/:username/posts", authMiddleware, async (c) => {
     .selectAll('actors')
     .where('users.username', '=', username)
     .executeTakeFirst();
-  if (actor == null) return c.redirect("/setup");
+  if (actor == null) return c.redirect("/");
   
   const form = await c.req.formData();
   const content = form.get("content")?.toString();
   if (content == null || content.trim() === "") {
-    return c.text("Content is required", 400);
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="Content Required"
+          message="Please enter post content before publishing."
+          type="error"
+          backUrl="/"
+          backText="Back to Home"
+        />
+      </Layout>
+    );
   }
 
 
@@ -322,7 +395,6 @@ app.post("/users/:username/posts", authMiddleware, async (c) => {
         uri: 'https://localhost/',
         actor_id: actor.id,
         content: sanitizeUserContent(content),
-        media_type: detectMediaType(content),
       })
       .returningAll()
       .executeTakeFirst();
@@ -343,7 +415,19 @@ app.post("/users/:username/posts", authMiddleware, async (c) => {
     return { ...insertedPost, uri: url, url: url };
   });
   
-  if (post == null) return c.text("Failed to create post", 500);
+  if (post == null) {
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="Publish Failed"
+          message="Failed to publish post. Please try again later."
+          type="error"
+          backUrl="/"
+          backText="Back to Home"
+        />
+      </Layout>
+    );
+  }
   
   try {
     await processMentions(post.id, content, actor.id);
@@ -440,8 +524,6 @@ app.get("/users/:username/posts/:id", async (c) => {
   
   const following = Number(followingResult?.following ?? 0);
   const followers = Number(followingResult?.followers ?? 0);
-  
-
   
   return c.html(
     <Layout>
@@ -680,16 +762,56 @@ app.post("/users/:username/profile", authMiddleware, async (c) => {
   
   // Validate input
   if (name && name.length > 100) {
-    return c.text("Display name too long", 400);
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="Display Name Too Long"
+          message="Display name cannot exceed 100 characters. Please shorten it and try again."
+          type="error"
+          backUrl={`/users/${username}/edit`}
+          backText="Back to Edit"
+        />
+      </Layout>
+    );
   }
   if (bio && bio.length > 500) {
-    return c.text("Bio too long", 400);
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="Bio Too Long"
+          message="Bio cannot exceed 500 characters. Please shorten it and try again."
+          type="error"
+          backUrl={`/users/${username}/edit`}
+          backText="Back to Edit"
+        />
+      </Layout>
+    );
   }
   if (location && location.length > 100) {
-    return c.text("Location too long", 400);
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="Location Too Long"
+          message="Location cannot exceed 100 characters. Please shorten it and try again."
+          type="error"
+          backUrl={`/users/${username}/edit`}
+          backText="Back to Edit"
+        />
+      </Layout>
+    );
   }
   if (website && !website.match(/^https?:\/\/.+/)) {
-    return c.text("Invalid website URL format", 400);
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="Invalid Website URL"
+          message="Please enter a valid website URL that starts with http:// or https://."
+          type="error"
+          backUrl={`/users/${username}/edit`}
+          backText="Back to Edit"
+        />
+      </Layout>
+    );
   }
   
   // Handle image uploads
@@ -698,10 +820,30 @@ app.post("/users/:username/profile", authMiddleware, async (c) => {
   
   if (avatarFile && avatarFile.size > 0) {
     if (avatarFile.size > 2 * 1024 * 1024) { // 2MB limit
-      return c.text("Avatar file too large", 400);
+      return c.html(
+        <Layout>
+          <MessagePage
+            title="Avatar File Too Large"
+            message="Avatar file size cannot exceed 2MB. Please choose a smaller image file."
+            type="error"
+            backUrl={`/users/${username}/edit`}
+            backText="Back to Edit"
+          />
+        </Layout>
+      );
     }
     if (!avatarFile.type.startsWith('image/')) {
-      return c.text("Avatar must be an image file", 400);
+      return c.html(
+        <Layout>
+          <MessagePage
+            title="Invalid Avatar File Format"
+            message="Avatar must be an image file. Please choose jpg, png or other image formats."
+            type="error"
+            backUrl={`/users/${username}/edit`}
+            backText="Back to Edit"
+          />
+        </Layout>
+      );
     }
     const buffer = await avatarFile.arrayBuffer();
     const base64 = encodeBase64(buffer);
@@ -710,10 +852,30 @@ app.post("/users/:username/profile", authMiddleware, async (c) => {
   
   if (headerFile && headerFile.size > 0) {
     if (headerFile.size > 5 * 1024 * 1024) { // 5MB limit
-      return c.text("Header file too large", 400);
+      return c.html(
+        <Layout>
+          <MessagePage
+            title="Header Image File Too Large"
+            message="Header image file size cannot exceed 5MB. Please choose a smaller image file."
+            type="error"
+            backUrl={`/users/${username}/edit`}
+            backText="Back to Edit"
+          />
+        </Layout>
+      );
     }
     if (!headerFile.type.startsWith('image/')) {
-      return c.text("Header must be an image file", 400);
+      return c.html(
+        <Layout>
+          <MessagePage
+            title="Invalid Header Image File Format"
+            message="Header image must be an image file. Please choose jpg, png or other image formats."
+            type="error"
+            backUrl={`/users/${username}/edit`}
+            backText="Back to Edit"
+          />
+        </Layout>
+      );
     }
     const buffer = await headerFile.arrayBuffer();
     const base64 = encodeBase64(buffer);

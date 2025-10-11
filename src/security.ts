@@ -52,11 +52,13 @@ export function sanitizeUserContent(content: string): string {
 
   let sanitized = content.trim();
   
+  // Convert URLs to links
   sanitized = sanitized.replace(
     /(https?:\/\/[^\s<>"']+)/gi,
     '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
   );
   
+  // Preserve links while escaping other HTML
   const linkPlaceholders: string[] = [];
   sanitized = sanitized.replace(/<a[^>]*>.*?<\/a>/gi, (match) => {
     const placeholder = `__LINK_${linkPlaceholders.length}__`;
@@ -64,12 +66,15 @@ export function sanitizeUserContent(content: string): string {
     return placeholder;
   });
   
+  // Escape HTML entities
   sanitized = escapeHtml(sanitized);
 
+  // Restore links
   linkPlaceholders.forEach((link, index) => {
     sanitized = sanitized.replace(`__LINK_${index}__`, link);
   });
   
+  // Convert line breaks to HTML
   sanitized = sanitized.replace(/\n/g, '<br>');
   
   return sanitized;
@@ -112,43 +117,4 @@ export function sanitizeActivityPubContent(content: string): string {
       return '<span>';
     }
   );
-}
-
-export function processContentByMediaType(content: string, mediaType: string): string {
-  if (!content || typeof content !== 'string') {
-    return '';
-  }
-
-  switch (mediaType) {
-    case 'text/plain':
-      return escapeHtml(content).replace(/\n/g, '<br>');
-    
-    case 'text/html':
-      return sanitizeHtml(content);
-    
-    case 'text/markdown':
-      return escapeHtml(content).replace(/\n/g, '<br>');
-    
-    default:
-      return escapeHtml(content).replace(/\n/g, '<br>');
-  }
-}
-
- 
-export function detectMediaType(content: string): string {
-  if (!content || typeof content !== 'string') {
-    return 'text/plain';
-  }
-
-  const htmlTagRegex = /<[^>]+>/;
-  if (htmlTagRegex.test(content)) {
-    return 'text/html';
-  }
-
-  const markdownRegex = /(\*\*|__|\*|_|`|#|\[.*\]\(.*\)|!\[.*\]\(.*\))/;
-  if (markdownRegex.test(content)) {
-    return 'text/markdown';
-  }
-
-  return 'text/plain';
 }
