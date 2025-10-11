@@ -1,18 +1,23 @@
 import { type Kysely, sql } from "kysely";
-import type { Database } from "./database.js";
+import type { Database } from "./database.ts";
 
 /**
  * Create database table structure programmatically using Kysely
  * Replaces the original schema.sql file
  * Optimized to reduce RTT by batching operations with Promise.all()
  */
-export async function createTables(db: Kysely<Database>): Promise<void> {
+export async function createTables(
+  db: Kysely<Database>,
+  type: "sqlite" | "pg" = "sqlite",
+): Promise<void> {
   // Step 1: Create base tables (users first, then actors that depend on users)
   await db.schema
     .createTable("users")
     .ifNotExists()
-    .addColumn("id", "integer", (col) =>
-      col.primaryKey().autoIncrement().notNull(),
+    .addColumn("id", type === "pg" ? "serial" : "integer", (col) =>
+      type === "pg"
+        ? col.primaryKey().notNull()
+        : col.primaryKey().autoIncrement().notNull(),
     )
     .addColumn("username", "text", (col) =>
       col
@@ -32,8 +37,10 @@ export async function createTables(db: Kysely<Database>): Promise<void> {
   await db.schema
     .createTable("actors")
     .ifNotExists()
-    .addColumn("id", "integer", (col) =>
-      col.primaryKey().autoIncrement().notNull(),
+    .addColumn("id", type === "pg" ? "serial" : "integer", (col) =>
+      type === "pg"
+        ? col.primaryKey().notNull()
+        : col.primaryKey().autoIncrement().notNull(),
     )
     .addColumn("user_id", "integer", (col) =>
       col.references("users.id").unique(),
@@ -130,8 +137,10 @@ export async function createTables(db: Kysely<Database>): Promise<void> {
     db.schema
       .createTable("posts")
       .ifNotExists()
-      .addColumn("id", "integer", (col) =>
-        col.primaryKey().autoIncrement().notNull(),
+      .addColumn("id", type === "pg" ? "serial" : "integer", (col) =>
+        type === "pg"
+          ? col.primaryKey().notNull()
+          : col.primaryKey().autoIncrement().notNull(),
       )
       .addColumn("uri", "text", (col) =>
         col.notNull().unique().check(sql`uri <> ''`),
@@ -158,8 +167,10 @@ export async function createTables(db: Kysely<Database>): Promise<void> {
     db.schema
       .createTable("mentions")
       .ifNotExists()
-      .addColumn("id", "integer", (col) =>
-        col.primaryKey().autoIncrement().notNull(),
+      .addColumn("id", type === "pg" ? "serial" : "integer", (col) =>
+        type === "pg"
+          ? col.primaryKey().notNull()
+          : col.primaryKey().autoIncrement().notNull(),
       )
       .addColumn("post_id", "integer", (col) =>
         col.notNull().references("posts.id").onDelete("cascade"),
@@ -179,8 +190,10 @@ export async function createTables(db: Kysely<Database>): Promise<void> {
     db.schema
       .createTable("notifications")
       .ifNotExists()
-      .addColumn("id", "integer", (col) =>
-        col.primaryKey().autoIncrement().notNull(),
+      .addColumn("id", type === "pg" ? "serial" : "integer", (col) =>
+        type === "pg"
+          ? col.primaryKey().notNull()
+          : col.primaryKey().autoIncrement().notNull(),
       )
       .addColumn("recipient_actor_id", "integer", (col) =>
         col.notNull().references("actors.id").onDelete("cascade"),

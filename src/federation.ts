@@ -1,30 +1,31 @@
 import {
   Accept,
+  type Actor as APActor,
   Create,
-  Endpoints,
-  Follow,
-  Note,
-  Person,
-  Undo,
-  Update,
   createFederation,
+  Endpoints,
   exportJwk,
+  Follow,
   generateCryptoKeyPair,
   getActorHandle,
+  InProcessMessageQueue,
   importJwk,
   isActor,
+  MemoryKvStore,
+  Note,
+  Person,
   PUBLIC_COLLECTION,
-  type Actor as APActor,
   type Recipient,
   type RequestContext,
+  Undo,
+  Update,
 } from "@fedify/fedify";
-import { InProcessMessageQueue, MemoryKvStore } from "@fedify/fedify";
 import { Mention } from "@fedify/fedify/vocab";
-import { Temporal } from "@js-temporal/polyfill";
 import { getLogger } from "@logtape/logtape";
-import db from "./db.ts";
 import type { Actor, Key } from "./database.ts";
+import db from "./db.ts";
 import { findMentionedUsers, parseMentions } from "./mentions.ts";
+import { parseTimestamp } from "./time.ts";
 
 const logger = getLogger("microblog");
 
@@ -385,7 +386,7 @@ federation.setObjectDispatcher(
       cc: ctx.getFollowersUri(values.identifier),
       content: post.content,
       mediaType: "text/html",
-      published: Temporal.Instant.from(`${post.created.replace(" ", "T")}Z`),
+      published: parseTimestamp(post.created),
       url: ctx.getObjectUri(Note, values),
       tags: tags.length > 0 ? tags : undefined,
     });

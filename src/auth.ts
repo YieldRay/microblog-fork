@@ -1,12 +1,12 @@
-import { sign, verify } from "hono/jwt";
-import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { encodeBase64, decodeBase64 } from "hono/utils/encode";
+import { env } from "node:process";
 import type { Context } from "hono";
+import { getCookie, setCookie, deleteCookie } from "hono/cookie";
+import { sign, verify } from "hono/jwt";
+import { decodeBase64, encodeBase64 } from "hono/utils/encode";
 
 // JWT secret key - should be obtained from environment variables in production
 const JWT_SECRET =
-  process.env.JWT_SECRET ||
-  "your-super-secret-jwt-key-change-this-in-production";
+  env.JWT_SECRET || "your-super-secret-jwt-key-change-this-in-production";
 
 // JWT configuration
 const JWT_ALGORITHM = "HS256";
@@ -159,21 +159,38 @@ export async function verifyToken(
 export async function getCurrentUser(
   c: Context,
 ): Promise<{ userId: number; username: string } | null> {
+  console.log("[Auth] Getting current user...");
+
   // First try to get token from Authorization header
   const authHeader = c.req.header("Authorization");
   if (authHeader?.startsWith("Bearer ")) {
+    console.log("[Auth] Found Authorization header");
     const token = authHeader.substring(7);
     const user = await verifyToken(token);
-    if (user) return user;
+    if (user) {
+      console.log("[Auth] User authenticated via header:", user.username);
+      return user;
+    }
   }
 
   // Then try to get token from cookie
   const token = getCookie(c, "auth_token");
+  console.log(
+    "[Auth] Cookie token:",
+    token ? `${token.substring(0, 20)}...` : "not found",
+  );
+
   if (token) {
     const user = await verifyToken(token);
-    if (user) return user;
+    if (user) {
+      console.log("[Auth] User authenticated via cookie:", user.username);
+      return user;
+    } else {
+      console.log("[Auth] Token found but verification failed");
+    }
   }
 
+  console.log("[Auth] No valid authentication found");
   return null;
 }
 
@@ -181,13 +198,22 @@ export async function getCurrentUser(
  * Set authentication cookie
  */
 export function setAuthCookie(c: Context, token: string): void {
+  console.log(
+    "[Auth] Setting cookie with token:",
+    `${token.substring(0, 20)}...`,
+  );
+  console.log("[Auth] NODE_ENV:", process.env.NODE_ENV);
+  console.log("[Auth] Secure flag:", process.env.NODE_ENV === "production");
+
   setCookie(c, "auth_token", token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "Strict",
+    sameSite: "Lax", // Changed from Strict to Lax for better compatibility
     maxAge: JWT_EXPIRES_IN,
     path: "/",
   });
+
+  console.log("[Auth] Cookie set successfully");
 }
 
 /**

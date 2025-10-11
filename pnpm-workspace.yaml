@@ -1,0 +1,6 @@
+ignoredBuiltDependencies:
+  - '@fedify/cli'
+  - esbuild
+
+onlyBuiltDependencies:
+  - better-sqlite3

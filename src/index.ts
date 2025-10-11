@@ -17,7 +17,7 @@ async function startServer() {
       (info) => logger.info(`Server started at http://localhost:${info.port}`),
     );
   } catch (error) {
-    logger.error("Failed to start server:", { error });
+    logger.error("Failed to start server: {error}", { error });
     process.exit(1);
   }
 }

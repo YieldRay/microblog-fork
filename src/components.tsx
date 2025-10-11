@@ -1,6 +1,5 @@
 import type { FC, PropsWithChildren } from "hono/jsx";
 
-// 基础类型定义
 export interface BaseProps {
   className?: string;
 }
@@ -86,8 +85,6 @@ export interface FormFieldProps extends BaseProps {
   error?: string;
   required?: boolean;
 }
-
-// 基础 UI 组件
 
 export const Button: FC<PropsWithChildren<ButtonProps>> = ({
   children,
@@ -447,7 +444,7 @@ export const MessageDisplay: FC<MessageDisplayProps> = ({
   type = "info",
   showBackButton = true,
   backUrl = "/",
-  backText = "返回",
+  backText = "Back",
   className = "",
 }) => {
   const typeClasses = {
@@ -492,7 +489,6 @@ export const MessageDisplay: FC<MessageDisplayProps> = ({
   );
 };
 
-// 页面消息组件 - 用于显示操作结果
 export interface PageMessageProps extends BaseProps {
   title: string;
   message: string;

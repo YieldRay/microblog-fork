@@ -1,42 +1,48 @@
+import {
+  Create,
+  Follow,
+  isActor,
+  lookupObject,
+  Note,
+  PUBLIC_COLLECTION,
+  Update,
+} from "@fedify/fedify";
 import { federation } from "@fedify/fedify/x/hono";
-import { Hono } from "hono";
-import { Update, PUBLIC_COLLECTION } from "@fedify/fedify";
 import { Temporal } from "@js-temporal/polyfill";
+import { Hono } from "hono";
 import { encodeBase64 } from "hono/utils/encode";
+import {
+  authMiddleware,
+  clearAuthCookie,
+  generateToken,
+  hashPassword,
+  optionalAuthMiddleware,
+  setAuthCookie,
+  verifyPassword,
+} from "./auth.ts";
+import db from "./db.ts";
+import fedi, { sendUndoFollow } from "./federation.ts";
+import { logger } from "./logging.ts";
+import {
+  findMentionedUsers,
+  parseMentions,
+  processMentions,
+} from "./mentions.ts";
+import { sanitizeUserContent } from "./security.ts";
 import {
   FollowerList,
   FollowingList,
   Home,
   Layout,
   LoginForm,
+  MessagePage,
+  NotificationPage,
   PostList,
   PostPage,
   Profile,
   ProfileEditForm,
   RegisterForm,
-  NotificationPage,
-  MessagePage,
 } from "./views.tsx";
-import { Create, Follow, isActor, lookupObject, Note } from "@fedify/fedify";
-import db from "./db.ts";
-import { logger } from "./logging.ts";
-import { sanitizeUserContent } from "./security.ts";
-import fedi, { sendUndoFollow } from "./federation.ts";
-import {
-  hashPassword,
-  verifyPassword,
-  generateToken,
-  setAuthCookie,
-  clearAuthCookie,
-  authMiddleware,
-  optionalAuthMiddleware,
-} from "./auth.ts";
-import {
-  processMentions,
-  parseMentions,
-  findMentionedUsers,
-} from "./mentions.ts";
-import type { User } from "./database.ts";
 
 // Extend Hono context types
 type Variables = {
@@ -570,10 +576,9 @@ app.get("/users/:username/posts/:id", async (c) => {
 
 // Login page
 app.get("/login", async (c) => {
-  const error = c.req.query("error");
   return c.html(
     <Layout>
-      <LoginForm error={error} />
+      <LoginForm />
     </Layout>,
   );
 });
@@ -584,8 +589,21 @@ app.post("/login", async (c) => {
   const username = form.get("username");
   const password = form.get("password");
 
+  logger.info("Login attempt for username: {username}", { username });
+
   if (typeof username !== "string" || typeof password !== "string") {
-    return c.redirect("/login?error=invalid_input");
+    logger.warn("Invalid input types");
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="Invalid Input"
+          message="Please provide both username and password."
+          type="error"
+          backUrl="/login"
+          backText="Back to Login"
+        />
+      </Layout>,
+    );
   }
 
   // Find user
@@ -596,18 +614,48 @@ app.post("/login", async (c) => {
     .executeTakeFirst();
 
   if (!user) {
-    return c.redirect("/login?error=invalid_credentials");
+    logger.warn("User not found: {username}", { username });
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="Login Failed"
+          message="Invalid username or password. Please try again."
+          type="error"
+          backUrl="/login"
+          backText="Back to Login"
+        />
+      </Layout>,
+    );
   }
+
+  logger.info("User found, verifying password...");
 
   // Verify password
   const isValidPassword = await verifyPassword(password, user.password_hash);
+  logger.info("Password verification result: {isValidPassword}", {
+    isValidPassword,
+  });
+
   if (!isValidPassword) {
-    return c.redirect("/login?error=invalid_credentials");
+    logger.warn("Invalid password for user: {username}", { username });
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="Login Failed"
+          message="Invalid username or password. Please try again."
+          type="error"
+          backUrl="/login"
+          backText="Back to Login"
+        />
+      </Layout>,
+    );
   }
 
   // Generate JWT token and set cookie
+  logger.info("Generating token for user: {username}", { username });
   const token = await generateToken(user.id, user.username);
   setAuthCookie(c, token);
+  logger.info("Login successful, redirecting to home");
 
   return c.redirect("/");
 });
@@ -631,16 +679,56 @@ app.post("/register", async (c) => {
 
   // Validate input
   if (typeof username !== "string" || !username.match(/^[a-z0-9_-]{1,50}$/)) {
-    return c.redirect("/register");
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="Invalid Username"
+          message="Username must be 1-50 characters long and can only contain lowercase letters, numbers, hyphens, and underscores."
+          type="error"
+          backUrl="/register"
+          backText="Back to Registration"
+        />
+      </Layout>,
+    );
   }
   if (typeof name !== "string" || name.trim() === "") {
-    return c.redirect("/register");
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="Name Required"
+          message="Please enter your display name."
+          type="error"
+          backUrl="/register"
+          backText="Back to Registration"
+        />
+      </Layout>,
+    );
   }
-  if (typeof password !== "string" || password.length < 8) {
-    return c.redirect("/register");
+  if (typeof password !== "string" || password.length < 6) {
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="Password Too Short"
+          message="Password must be at least 6 characters long."
+          type="error"
+          backUrl="/register"
+          backText="Back to Registration"
+        />
+      </Layout>,
+    );
   }
   if (password !== confirmPassword) {
-    return c.redirect("/register");
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="Passwords Do Not Match"
+          message="The password and confirmation password do not match. Please try again."
+          type="error"
+          backUrl="/register"
+          backText="Back to Registration"
+        />
+      </Layout>,
+    );
   }
 
   // Check if username already exists
@@ -651,7 +739,17 @@ app.post("/register", async (c) => {
     .executeTakeFirst();
 
   if (existingUser) {
-    return c.redirect("/register");
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="Username Already Exists"
+          message="This username is already taken. Please choose a different username."
+          type="error"
+          backUrl="/register"
+          backText="Back to Registration"
+        />
+      </Layout>,
+    );
   }
 
   const passwordHash = await hashPassword(password);
@@ -661,43 +759,36 @@ app.post("/register", async (c) => {
 
   try {
     await db.transaction().execute(async (trx) => {
-      // Check if this is the first user by checking if user with id = 0 exists
-      const userWithIdZero = await trx
+      // Check if this is the first user by checking if user with id = 1 exists
+      logger.info("Checking for first user...");
+      const firstUser = await trx
         .selectFrom("users")
         .select(["id"])
-        .where("id", "=", 0)
+        .where("id", "=", 1)
         .executeTakeFirst();
 
-      const isFirstUser = !userWithIdZero;
+      const isFirstUser = !firstUser;
+      logger.info("Is first user: {isFirstUser}", { isFirstUser });
 
-      // Create user with ID 0 for first user
-      let insertedUser: User | undefined;
-      if (isFirstUser) {
-        // For the first user, explicitly set ID to 0
-        await trx
-          .insertInto("users")
-          .values({ id: 0, username, password_hash: passwordHash })
-          .execute();
-
-        insertedUser = await trx
-          .selectFrom("users")
-          .selectAll()
-          .where("id", "=", 0)
-          .executeTakeFirst();
-      } else {
-        // For subsequent users, let the database auto-assign ID
-        insertedUser = await trx
-          .insertInto("users")
-          .values({ username, password_hash: passwordHash })
-          .returningAll()
-          .executeTakeFirst();
-      }
+      // Create user - let database auto-assign ID
+      logger.info("Creating user, username={username}", { username });
+      const insertedUser = await trx
+        .insertInto("users")
+        .values({ username, password_hash: passwordHash })
+        .returningAll()
+        .executeTakeFirst();
 
       if (!insertedUser) {
         throw new Error("Failed to create user");
       }
 
+      logger.info("User created with id={id}, isFirstUser={isFirstUser}", {
+        id: insertedUser.id,
+        isFirstUser,
+      });
+
       // Create actor
+      logger.info("Creating actor for user...");
       await trx
         .insertInto("actors")
         .values({
@@ -710,6 +801,8 @@ app.post("/register", async (c) => {
           url: ctx.getActorUri(username).href,
         })
         .execute();
+
+      logger.info("Actor created successfully");
     });
 
     // Registration successful, auto-login
@@ -727,7 +820,17 @@ app.post("/register", async (c) => {
     return c.redirect("/");
   } catch (error) {
     logger.error("Registration error: {error}", { error });
-    return c.redirect("/register");
+    return c.html(
+      <Layout>
+        <MessagePage
+          title="Registration Failed"
+          message="Failed to create account. Please try again later or contact support if the problem persists."
+          type="error"
+          backUrl="/register"
+          backText="Back to Registration"
+        />
+      </Layout>,
+    );
   }
 });
 

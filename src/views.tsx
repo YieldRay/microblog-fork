@@ -1,23 +1,26 @@
 import type { FC, PropsWithChildren } from "hono/jsx";
-import type { Actor, Post, User, Notification } from "./database.ts";
-import { sanitizeActivityPubContent, escapeHtml } from "./security.ts";
-import { Temporal } from "@js-temporal/polyfill";
-import { highlightMentions } from "./mentions.ts";
 import {
-  Button,
-  Input,
-  Textarea,
-  Card,
   Avatar,
+  Button,
+  Card,
   Container,
   Flex,
-  ErrorMessage,
   FormField,
-  NotificationBadge as NotificationBadgeComponent,
   HeaderImage,
+  Input,
   LinkButton,
+  NotificationBadge as NotificationBadgeComponent,
   PageMessage,
+  Textarea,
 } from "./components.tsx";
+import type { Actor, Notification, Post, User } from "./database.ts";
+import { highlightMentions } from "./mentions.ts";
+import { escapeHtml, sanitizeActivityPubContent } from "./security.ts";
+import {
+  formatForDateTimeAttribute,
+  formatForDisplay,
+  formatRelativeTime,
+} from "./time.ts";
 
 export type PageHeaderProps = PropsWithChildren<{
   title: string;
@@ -135,30 +138,13 @@ export const Home: FC<HomeProps> = ({
   </>
 );
 
-export const LoginForm: FC<{ error?: string }> = ({ error }) => {
-  const getErrorMessage = (errorCode?: string) => {
-    switch (errorCode) {
-      case "invalid_input":
-        return "Please provide both username and password.";
-      case "invalid_credentials":
-        return "Invalid username or password. Please try again.";
-      default:
-        return null;
-    }
-  };
-
-  const errorMessage = getErrorMessage(error);
-
+export const LoginForm: FC = () => {
   return (
     <Container maxWidth="sm">
       <Card className="mt-8">
         <h1 class="text-2xl font-bold text-slate-900 text-center mb-6">
           Login to your microblog
         </h1>
-
-        {errorMessage && (
-          <ErrorMessage message={errorMessage} className="mb-6" />
-        )}
 
         <form method="post" action="/login" class="space-y-6">
           <FormField label="Username" required>
@@ -221,8 +207,8 @@ export const RegisterForm: FC = () => (
             type="password"
             name="password"
             required
-            minlength={8}
-            placeholder="At least 8 characters"
+            minlength={6}
+            placeholder="At least 6 characters"
           />
         </FormField>
 
@@ -231,7 +217,7 @@ export const RegisterForm: FC = () => (
             type="password"
             name="confirmPassword"
             required
-            minlength={8}
+            minlength={6}
             placeholder="Confirm your password"
           />
         </FormField>
@@ -701,11 +687,8 @@ export const PostView: FC<PostViewProps> = ({ post }) => {
         </div>
       </Flex>
       <div class="text-sm text-slate-500 border-t border-slate-100 pt-3">
-        <time datetime={Temporal.Instant.from(`${post.created}Z`).toString()}>
-          {Temporal.Instant.from(`${post.created}Z`)
-            .toZonedDateTimeISO("UTC")
-            .toPlainDateTime()
-            .toLocaleString()}
+        <time datetime={formatForDateTimeAttribute(post.created)}>
+          {formatForDisplay(post.created)}
         </time>
       </div>
     </div>
@@ -746,21 +729,6 @@ export interface NotificationItemProps {
 export const NotificationItem: FC<NotificationItemProps> = ({
   notification,
 }) => {
-  const formatTime = (timestamp: string) => {
-    const notificationTime = Temporal.Instant.from(timestamp);
-    const now = Temporal.Now.instant();
-    const duration = now.since(notificationTime);
-
-    const totalMinutes = duration.total("minutes");
-    const totalHours = duration.total("hours");
-    const totalDays = duration.total("days");
-
-    if (totalMinutes < 1) return "just now";
-    if (totalMinutes < 60) return `${Math.floor(totalMinutes)} minutes ago`;
-    if (totalHours < 24) return `${Math.floor(totalHours)} hours ago`;
-    return `${Math.floor(totalDays)} days ago`;
-  };
-
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case "mention":
@@ -802,7 +770,7 @@ export const NotificationItem: FC<NotificationItemProps> = ({
               )}
             </span>
             <span class="text-sm text-slate-500">
-              {formatTime(notification.created)}
+              {formatRelativeTime(notification.created)}
             </span>
           </Flex>
           <p class="text-slate-700 mb-3">{escapeHtml(notification.message)}</p>

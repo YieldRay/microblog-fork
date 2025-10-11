@@ -1,5 +1,5 @@
-import db from "./db.js";
-import type { Actor, NewMention, NewNotification } from "./database.js";
+import db from "./db.ts";
+import type { Actor, NewMention, NewNotification } from "./database.ts";
 import { escapeHtml } from "./security.ts";
 
 /**
