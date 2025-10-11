@@ -4,7 +4,6 @@ import {
   Endpoints,
   Follow,
   Note,
-  PUBLIC_COLLECTION,
   Person,
   Undo,
   Update,
@@ -14,8 +13,10 @@ import {
   getActorHandle,
   importJwk,
   isActor,
+  PUBLIC_COLLECTION,
   type Actor as APActor,
   type Recipient,
+  type RequestContext
 } from "@fedify/fedify";
 import { InProcessMessageQueue, MemoryKvStore } from "@fedify/fedify";
 import { Mention } from "@fedify/fedify/vocab";
@@ -401,6 +402,43 @@ async function persistActor(actor: APActor): Promise<Actor | null> {
     )
     .returningAll()
     .executeTakeFirst() ?? null;
+}
+
+// Function to send Undo Follow activity
+export async function sendUndoFollow(
+  ctx: RequestContext<unknown>,
+  identifier: string,
+  targetActorUri: string
+): Promise<void> {
+  try {
+    // Create the original Follow activity to undo
+    const followActivity = new Follow({
+      actor: ctx.getActorUri(identifier),
+      object: new URL(targetActorUri),
+    });
+
+    // Create the Undo activity
+    const undoActivity = new Undo({
+      actor: ctx.getActorUri(identifier),
+      object: followActivity,
+      to: new URL(targetActorUri),
+    });
+
+    // Send the Undo activity to the target actor
+    await ctx.sendActivity(
+      { identifier },
+      (await ctx.getActor(identifier))!,
+      undoActivity
+    );
+
+    logger.info("Sent Undo Follow activity from {username} to {target}", {
+      identifier,
+      target: targetActorUri
+    });
+  } catch (error) {
+    logger.error("Failed to send Undo Follow activity: {error}", { error });
+    throw error;
+  }
 }
 
 export default federation;

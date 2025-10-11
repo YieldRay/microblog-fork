@@ -6,7 +6,7 @@ import { Temporal } from "@js-temporal/polyfill";
 import { encodeBase64 } from 'hono/utils/encode';
 import { logger } from "./logging.ts";
 import db from "./db.ts";
-import fedi from "./federation.ts";
+import fedi, { sendUndoFollow } from "./federation.ts";
 import {
   FollowerList,
   FollowingList,
@@ -200,6 +200,61 @@ app.post("/users/:username/following", authMiddleware, async (c) => {
     }),
   );
   return c.text("Successfully sent a follow request");
+});
+
+// Unfollow route
+app.post("/users/:username/unfollow", authMiddleware, async (c) => {
+  const username = c.req.param("username");
+  const authUser = c.get('user');
+  
+  if (!authUser) {
+    return c.redirect("/login");
+  }
+  
+  const form = await c.req.formData();
+  const actorId = form.get("actorId");
+  
+  if (typeof actorId !== "string") {
+    return c.text("Invalid actor ID", 400);
+  }
+  
+  // Get current user's actor
+  const currentUserActor = await db
+    .selectFrom('actors')
+    .select(['id'])
+    .where('user_id', '=', authUser.userId)
+    .executeTakeFirst();
+    
+  if (!currentUserActor) {
+    return c.text("User not found", 404);
+  }
+  
+  // Get the target actor's URI for ActivityPub
+  const targetActor = await db
+    .selectFrom('actors')
+    .select(['uri'])
+    .where('id', '=', Number(actorId))
+    .executeTakeFirst();
+  
+  // Remove follow relationship from database
+  await db
+    .deleteFrom('follows')
+    .where('follower_id', '=', currentUserActor.id)
+    .where('following_id', '=', Number(actorId))
+    .execute();
+  
+  // Send ActivityPub Undo Follow activity
+  if (targetActor) {
+    try {
+      const ctx = fedi.createContext(c.req.raw, undefined);
+      await sendUndoFollow(ctx, username, targetActor.uri);
+    } catch (error) {
+      logger.error("Failed to send Undo Follow activity: {error}", { error });
+      // Don't block the unfollow operation, just log the error
+    }
+  }
+  
+  return c.redirect(`/users/${username}/following`);
 });
 
 app.get("/users/:username/following", optionalAuthMiddleware, async (c) => {
