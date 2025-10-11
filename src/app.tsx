@@ -1,10 +1,8 @@
 import { federation } from "@fedify/fedify/x/hono";
-import { getLogger } from "@logtape/logtape";
 import { Hono } from "hono";
 import { stringifyEntities } from "stringify-entities";
 import db from "./db.ts";
 import fedi from "./federation.ts";
-import type { Actor, Post, User } from "./schema.ts";
 import {
   FollowerList,
   FollowingList,
@@ -17,39 +15,32 @@ import {
 } from "./views.tsx";
 import { Create, Follow, isActor, lookupObject, Note } from "@fedify/fedify";
 
-const logger = getLogger("microblog");
-
 const app = new Hono();
 app.use(federation(fedi, () => undefined));
 
-app.get("/", (c) => {
-  const user = db
-    .prepare<unknown[], User & Actor>(
-      `
-      SELECT users.*, actors.*
-      FROM users
-      JOIN actors ON users.id = actors.user_id
-      LIMIT 1
-      `,
-    )
-    .get();
+app.get("/", async (c) => {
+  const user = await db
+    .selectFrom('users')
+    .innerJoin('actors', 'users.id', 'actors.user_id')
+    .selectAll()
+    .limit(1)
+    .executeTakeFirst();
   if (user == null) return c.redirect("/setup");
 
-  const posts = db
-    .prepare<unknown[], Post & Actor>(
-      `
-      SELECT actors.*, posts.*
-      FROM posts
-      JOIN actors ON posts.actor_id = actors.id
-      WHERE posts.actor_id = ? OR posts.actor_id IN (
-        SELECT following_id
-        FROM follows
-        WHERE follower_id = ?
+  const posts = await db
+    .selectFrom('posts')
+    .innerJoin('actors', 'posts.actor_id', 'actors.id')
+    .selectAll()
+    .where((eb) => eb.or([
+      eb('posts.actor_id', '=', user.id),
+      eb('posts.actor_id', 'in',
+        eb.selectFrom('follows')
+          .select('following_id')
+          .where('follower_id', '=', user.id)
       )
-      ORDER BY posts.created DESC
-      `,
-    )
-    .all(user.id, user.id);
+    ]))
+    .orderBy('posts.created', 'desc')
+    .execute();
   return c.html(
     <Layout>
       <Home user={user} posts={posts} />
@@ -57,17 +48,14 @@ app.get("/", (c) => {
   );
 });
 
-app.get("/setup", (c) => {
+app.get("/setup", async (c) => {
   // Check if the user already exists
-  const user = db
-    .prepare<unknown[], User>(
-      `
-      SELECT * FROM users
-      JOIN actors ON (users.id = actors.user_id)
-      LIMIT 1
-      `,
-    )
-    .get();
+  const user = await db
+    .selectFrom('users')
+    .innerJoin('actors', 'users.id', 'actors.user_id')
+    .selectAll()
+    .limit(1)
+    .executeTakeFirst();
   if (user != null) return c.redirect("/");
 
   return c.html(
@@ -79,15 +67,12 @@ app.get("/setup", (c) => {
 
 app.post("/setup", async (c) => {
   // Check if the user already exists
-  const user = db
-    .prepare<unknown[], User>(
-      `
-      SELECT * FROM users
-      JOIN actors ON (users.id = actors.user_id)
-      LIMIT 1
-      `,
-    )
-    .get();
+  const user = await db
+    .selectFrom('users')
+    .innerJoin('actors', 'users.id', 'actors.user_id')
+    .selectAll()
+    .limit(1)
+    .executeTakeFirst();
   if (user != null) return c.redirect("/");
 
   const form = await c.req.formData();
@@ -102,73 +87,70 @@ app.post("/setup", async (c) => {
   const url = new URL(c.req.url);
   const handle = `@${username}@${url.host}`;
   const ctx = fedi.createContext(c.req.raw, undefined);
-  db.transaction(() => {
-    db.prepare("INSERT OR REPLACE INTO users (id, username) VALUES (1, ?)").run(
-      username,
-    );
-    db.prepare(
-      `
-      INSERT OR REPLACE INTO actors
-        (user_id, uri, handle, name, inbox_url, shared_inbox_url, url)
-      VALUES (1, ?, ?, ?, ?, ?, ?)
-    `,
-    ).run(
-      ctx.getActorUri(username).href,
-      handle,
-      name,
-      ctx.getInboxUri(username).href,
-      ctx.getInboxUri().href,
-      ctx.getActorUri(username).href,
-    );
-  })();
+  
+  await db.transaction().execute(async (trx) => {
+    await trx
+      .insertInto('users')
+      .values({ username })
+      .onConflict((oc) => oc.column('username').doUpdateSet({ username }))
+      .execute();
+    
+    await trx
+      .insertInto('actors')
+      .values({
+        user_id: 1,
+        uri: ctx.getActorUri(username).href,
+        handle,
+        name,
+        inbox_url: ctx.getInboxUri(username).href,
+        shared_inbox_url: ctx.getInboxUri().href,
+        url: ctx.getActorUri(username).href,
+      })
+      .onConflict((oc) => oc.column('user_id').doUpdateSet({
+        uri: (eb) => eb.ref('excluded.uri'),
+        handle: (eb) => eb.ref('excluded.handle'),
+        name: (eb) => eb.ref('excluded.name'),
+        inbox_url: (eb) => eb.ref('excluded.inbox_url'),
+        shared_inbox_url: (eb) => eb.ref('excluded.shared_inbox_url'),
+        url: (eb) => eb.ref('excluded.url'),
+      }))
+      .execute();
+  });
   return c.redirect("/");
 });
 
 app.get("/users/:username", async (c) => {
-  const user = db
-    .prepare<unknown[], User & Actor>(
-      `
-      SELECT * FROM users
-      JOIN actors ON (users.id = actors.user_id)
-      WHERE username = ?
-      `,
-    )
-    .get(c.req.param("username"));
+  const user = await db
+    .selectFrom('users')
+    .innerJoin('actors', 'users.id', 'actors.user_id')
+    .selectAll()
+    .where('username', '=', c.req.param("username"))
+    .executeTakeFirst();
   if (user == null) return c.notFound();
 
-  // biome-ignore lint/style/noNonNullAssertion: always returns a row
-  const { following } = db
-    .prepare<unknown[], { following: number }>(
-      `
-      SELECT count(*) AS following
-      FROM follows
-      JOIN actors ON follows.follower_id = actors.id
-      WHERE actors.user_id = ?
-      `,
-    )
-    .get(user.id)!;
-  // biome-ignore lint/style/noNonNullAssertion: always returns a row
-  const { followers } = db
-    .prepare<unknown[], { followers: number }>(
-      `
-      SELECT count(*) AS followers
-      FROM follows
-      JOIN actors ON follows.following_id = actors.id
-      WHERE actors.user_id = ?
-      `,
-    )
-    .get(user.id)!;
-  const posts = db
-    .prepare<unknown[], Post & Actor>(
-      `
-      SELECT actors.*, posts.*
-      FROM posts
-      JOIN actors ON posts.actor_id = actors.id
-      WHERE actors.user_id = ?
-      ORDER BY posts.created DESC
-      `,
-    )
-    .all(user.user_id);
+  const followingResult = await db
+    .selectFrom('follows')
+    .innerJoin('actors', 'follows.follower_id', 'actors.id')
+    .select((eb) => eb.fn.count('follows.following_id').as('following'))
+    .where('actors.user_id', '=', user.id)
+    .executeTakeFirst();
+  const following = Number(followingResult?.following ?? 0);
+
+  const followersResult = await db
+    .selectFrom('follows')
+    .innerJoin('actors', 'follows.following_id', 'actors.id')
+    .select((eb) => eb.fn.count('follows.follower_id').as('followers'))
+    .where('actors.user_id', '=', user.id)
+    .executeTakeFirst();
+  const followers = Number(followersResult?.followers ?? 0);
+
+  const posts = await db
+    .selectFrom('posts')
+    .innerJoin('actors', 'posts.actor_id', 'actors.id')
+    .selectAll()
+    .where('actors.user_id', '=', user.user_id)
+    .orderBy('posts.created', 'desc')
+    .execute();
   const url = new URL(c.req.url);
   const handle = `@${user.username}@${url.host}`;
   return c.html(
@@ -210,19 +192,25 @@ app.post("/users/:username/following", async (c) => {
 });
 
 app.get("/users/:username/following", async (c) => {
-  const following = db
-    .prepare<unknown[], Actor>(
-      `
-      SELECT following.*
-      FROM follows
-      JOIN actors AS followers ON follows.follower_id = followers.id
-      JOIN actors AS following ON follows.following_id = following.id
-      JOIN users ON users.id = followers.user_id
-      WHERE users.username = ?
-      ORDER BY follows.created DESC
-      `,
-    )
-    .all(c.req.param("username"));
+  const following = await db
+    .selectFrom('follows')
+    .innerJoin('actors as followers', 'follows.follower_id', 'followers.id')
+    .innerJoin('actors as following', 'follows.following_id', 'following.id')
+    .innerJoin('users', 'users.id', 'followers.user_id')
+    .select([
+      'following.id',
+      'following.user_id',
+      'following.uri',
+      'following.handle',
+      'following.name',
+      'following.inbox_url',
+      'following.shared_inbox_url',
+      'following.url',
+      'following.created'
+    ])
+    .where('users.username', '=', c.req.param("username"))
+    .orderBy('follows.created', 'desc')
+    .execute();
   return c.html(
     <Layout>
       <FollowingList following={following} />
@@ -231,19 +219,25 @@ app.get("/users/:username/following", async (c) => {
 });
 
 app.get("/users/:username/followers", async (c) => {
-  const followers = db
-    .prepare<unknown[], Actor>(
-      `
-      SELECT followers.*
-      FROM follows
-      JOIN actors AS followers ON follows.follower_id = followers.id
-      JOIN actors AS following ON follows.following_id = following.id
-      JOIN users ON users.id = following.user_id
-      WHERE users.username = ?
-      ORDER BY follows.created DESC
-      `,
-    )
-    .all(c.req.param("username"));
+  const followers = await db
+    .selectFrom('follows')
+    .innerJoin('actors as followers', 'follows.follower_id', 'followers.id')
+    .innerJoin('actors as following', 'follows.following_id', 'following.id')
+    .innerJoin('users', 'users.id', 'following.user_id')
+    .select([
+      'followers.id',
+      'followers.user_id',
+      'followers.uri',
+      'followers.handle',
+      'followers.name',
+      'followers.inbox_url',
+      'followers.shared_inbox_url',
+      'followers.url',
+      'followers.created'
+    ])
+    .where('users.username', '=', c.req.param("username"))
+    .orderBy('follows.created', 'desc')
+    .execute();
   return c.html(
     <Layout>
       <FollowerList followers={followers} />
@@ -253,16 +247,12 @@ app.get("/users/:username/followers", async (c) => {
 
 app.post("/users/:username/posts", async (c) => {
   const username = c.req.param("username");
-  const actor = db
-    .prepare<unknown[], Actor>(
-      `
-      SELECT actors.*
-      FROM actors
-      JOIN users ON users.id = actors.user_id
-      WHERE users.username = ?
-      `,
-    )
-    .get(username);
+  const actor = await db
+    .selectFrom('actors')
+    .innerJoin('users', 'users.id', 'actors.user_id')
+    .selectAll('actors')
+    .where('users.username', '=', username)
+    .executeTakeFirst();
   if (actor == null) return c.redirect("/setup");
   const form = await c.req.formData();
   const content = form.get("content")?.toString();
@@ -270,28 +260,32 @@ app.post("/users/:username/posts", async (c) => {
     return c.text("Content is required", 400);
   }
   const ctx = fedi.createContext(c.req.raw, undefined);
-  const post: Post | null = db.transaction(() => {
-    const post = db
-      .prepare<unknown[], Post>(
-        `
-        INSERT INTO posts (uri, actor_id, content)
-        VALUES ('https://localhost/', ?, ?)
-        RETURNING *
-        `,
-      )
-      .get(actor.id, stringifyEntities(content, { escapeOnly: true }));
-    if (post == null) return null;
+  const post = await db.transaction().execute(async (trx) => {
+    const insertedPost = await trx
+      .insertInto('posts')
+      .values({
+        uri: 'https://localhost/',
+        actor_id: actor.id,
+        content: stringifyEntities(content, { escapeOnly: true }),
+      })
+      .returningAll()
+      .executeTakeFirst();
+    
+    if (insertedPost == null) return null;
+    
     const url = ctx.getObjectUri(Note, {
       identifier: username,
-      id: post.id.toString(),
+      id: insertedPost.id.toString(),
     }).href;
-    db.prepare("UPDATE posts SET uri = ?, url = ? WHERE id = ?").run(
-      url,
-      url,
-      post.id,
-    );
-    return post;
-  })();
+    
+    await trx
+      .updateTable('posts')
+      .set({ uri: url, url: url })
+      .where('id', '=', insertedPost.id)
+      .execute();
+    
+    return { ...insertedPost, uri: url, url: url };
+  });
   if (post == null) return c.text("Failed to create post", 500);
   const noteArgs = { identifier: username, id: post.id.toString() };
   const note = await ctx.getObject(Note, noteArgs);
@@ -309,30 +303,39 @@ app.post("/users/:username/posts", async (c) => {
   return c.redirect(ctx.getObjectUri(Note, noteArgs).href);
 });
 
-app.get("/users/:username/posts/:id", (c) => {
-  const post = db
-    .prepare<unknown[], Post & Actor & User>(
-      `
-      SELECT users.*, actors.*, posts.*
-      FROM posts
-      JOIN actors ON actors.id = posts.actor_id
-      JOIN users ON users.id = actors.user_id
-      WHERE users.username = ? AND posts.id = ?
-      `,
-    )
-    .get(c.req.param("username"), c.req.param("id"));
+app.get("/users/:username/posts/:id", async (c) => {
+  const post = await db
+    .selectFrom('posts')
+    .innerJoin('actors', 'actors.id', 'posts.actor_id')
+    .innerJoin('users', 'users.id', 'actors.user_id')
+    .selectAll()
+    .where('users.username', '=', c.req.param("username"))
+    .where('posts.id', '=', Number(c.req.param("id")))
+    .executeTakeFirst();
   if (post == null) return c.notFound();
 
-  // biome-ignore lint/style/noNonNullAssertion: always returns a row
-  const { following, followers } = db
-    .prepare<unknown[], { following: number; followers: number }>(
-      `
-      SELECT sum(follows.follower_id = ?) AS following,
-             sum(follows.following_id = ?) AS followers
-      FROM follows
-      `,
-    )
-    .get(post.actor_id, post.actor_id)!;
+  const followingResult = await db
+    .selectFrom('follows')
+    .select((eb) => [
+      eb.fn.sum(
+        eb.case()
+          .when('follows.follower_id', '=', post.actor_id)
+          .then(1)
+          .else(0)
+          .end()
+      ).as('following'),
+      eb.fn.sum(
+        eb.case()
+          .when('follows.following_id', '=', post.actor_id)
+          .then(1)
+          .else(0)
+          .end()
+      ).as('followers')
+    ])
+    .executeTakeFirst();
+  
+  const following = Number(followingResult?.following ?? 0);
+  const followers = Number(followingResult?.followers ?? 0);
   return c.html(
     <Layout>
       <PostPage

@@ -20,7 +20,7 @@ import { InProcessMessageQueue, MemoryKvStore } from "@fedify/fedify";
 import { Temporal } from "@js-temporal/polyfill";
 import { getLogger } from "@logtape/logtape";
 import db from "./db.ts";
-import type { Actor, Key, Post, User } from "./schema.ts";
+import type { Actor, Key } from "./database.ts";
 
 const logger = getLogger("microblog");
 
@@ -31,15 +31,12 @@ const federation = createFederation({
 
 federation
   .setActorDispatcher("/users/{identifier}", async (ctx, identifier) => {
-    const user = db
-      .prepare<unknown[], User & Actor>(
-        `
-        SELECT * FROM users
-        JOIN actors ON (users.id = actors.user_id)
-        WHERE users.username = ?
-        `,
-      )
-      .get(identifier);
+    const user = await db
+      .selectFrom('users')
+      .innerJoin('actors', 'users.id', 'actors.user_id')
+      .selectAll()
+      .where('users.username', '=', identifier)
+      .executeTakeFirst();
     if (user == null) return null;
 
     const keys = await ctx.getActorKeyPairs(identifier);
@@ -58,13 +55,17 @@ federation
     });
   })
   .setKeyPairsDispatcher(async (ctx, identifier) => {
-    const user = db
-      .prepare<unknown[], User>("SELECT * FROM users WHERE username = ?")
-      .get(identifier);
+    const user = await db
+      .selectFrom('users')
+      .selectAll()
+      .where('username', '=', identifier)
+      .executeTakeFirst();
     if (user == null) return [];
-    const rows = db
-      .prepare<unknown[], Key>("SELECT * FROM keys WHERE keys.user_id = ?")
-      .all(user.id);
+    const rows = await db
+      .selectFrom('keys')
+      .selectAll()
+      .where('user_id', '=', user.id)
+      .execute();
     const keys = Object.fromEntries(
       rows.map((row) => [row.type, row]),
     ) as Record<Key["type"], Key>;
@@ -79,17 +80,15 @@ federation
           { identifier, keyType },
         );
         const { privateKey, publicKey } = await generateCryptoKeyPair(keyType);
-        db.prepare(
-          `
-          INSERT INTO keys (user_id, type, private_key, public_key)
-          VALUES (?, ?, ?, ?)
-          `,
-        ).run(
-          user.id,
-          keyType,
-          JSON.stringify(await exportJwk(privateKey)),
-          JSON.stringify(await exportJwk(publicKey)),
-        );
+        await db
+          .insertInto('keys')
+          .values({
+            user_id: user.id,
+            type: keyType,
+            private_key: JSON.stringify(await exportJwk(privateKey)),
+            public_key: JSON.stringify(await exportJwk(publicKey)),
+          })
+          .execute();
         pairs.push({ privateKey, publicKey });
       } else {
         pairs.push({
@@ -130,15 +129,13 @@ federation
       });
       return;
     }
-    const following_id = db
-      .prepare<unknown[], Actor>(
-        `
-        SELECT * FROM actors
-        JOIN users ON users.id = actors.user_id
-        WHERE users.username = ?
-        `,
-      )
-      .get(object.identifier)?.id;
+    const followingActor = await db
+      .selectFrom('actors')
+      .innerJoin('users', 'users.id', 'actors.user_id')
+      .selectAll()
+      .where('users.username', '=', object.identifier)
+      .executeTakeFirst();
+    const following_id = followingActor?.id;
     if (following_id == null) {
       logger.debug(
         "Failed to find the actor to follow in the database: {object}",
@@ -146,9 +143,15 @@ federation
       );
     }
     const followerId = (await persistActor(follower))?.id;
-    db.prepare(
-      "INSERT INTO follows (following_id, follower_id) VALUES (?, ?)",
-    ).run(following_id, followerId);
+    if (following_id != null && followerId != null) {
+      await db
+        .insertInto('follows')
+        .values({
+          following_id: following_id,
+          follower_id: followerId,
+        })
+        .execute();
+    }
     const accept = new Accept({
       actor: follow.objectId,
       to: follow.actorId,
@@ -162,17 +165,24 @@ federation
     if (undo.actorId == null || object.objectId == null) return;
     const parsed = ctx.parseUri(object.objectId);
     if (parsed == null || parsed.type !== "actor") return;
-    db.prepare(
-      `
-      DELETE FROM follows
-      WHERE following_id = (
-        SELECT actors.id
-        FROM actors
-        JOIN users ON actors.user_id = users.id
-        WHERE users.username = ?
-      ) AND follower_id = (SELECT id FROM actors WHERE uri = ?)
-      `,
-    ).run(parsed.identifier, undo.actorId.href);
+    if (undo.actorId != null) {
+      await db
+        .deleteFrom('follows')
+        .where((eb) => eb.and([
+          eb('following_id', '=', eb
+            .selectFrom('actors')
+            .innerJoin('users', 'actors.user_id', 'users.id')
+            .select('actors.id')
+            .where('users.username', '=', parsed.identifier)
+          ),
+          eb('follower_id', '=', eb
+            .selectFrom('actors')
+            .select('id')
+            .where('uri', '=', undo.actorId!.href)
+          )
+        ]))
+        .execute();
+    }
   })
   .on(Accept, async (ctx, accept) => {
     const follow = await accept.getObject();
@@ -185,20 +195,22 @@ federation
     if (parsed == null || parsed.type !== "actor") return;
     const followingId = (await persistActor(following))?.id;
     if (followingId == null) return;
-    db.prepare(
-      `
-      INSERT INTO follows (following_id, follower_id)
-      VALUES (
-        ?,
-        (
-          SELECT actors.id
-          FROM actors
-          JOIN users ON actors.user_id = users.id
-          WHERE users.username = ?
-        )
-      )
-      `,
-    ).run(followingId, parsed.identifier);
+    const followerActor = await db
+      .selectFrom('actors')
+      .innerJoin('users', 'actors.user_id', 'users.id')
+      .select('actors.id')
+      .where('users.username', '=', parsed.identifier)
+      .executeTakeFirst();
+    
+    if (followerActor) {
+      await db
+        .insertInto('follows')
+        .values({
+          following_id: followingId,
+          follower_id: followerActor.id,
+        })
+        .execute();
+    }
   })
   .on(Create, async (ctx, create) => {
     const object = await create.getObject();
@@ -211,28 +223,42 @@ federation
     if (actorId == null) return;
     if (object.id == null) return;
     const content = object.content?.toString();
-    db.prepare(
-      "INSERT INTO posts (uri, actor_id, content, url) VALUES (?, ?, ?, ?)",
-    ).run(object.id.href, actorId, content, object.url?.href);
+    if (content != null) {
+      await db
+        .insertInto('posts')
+        .values({
+          uri: object.id.href,
+          actor_id: actorId,
+          content: content,
+          url: object.url instanceof URL ? object.url.href : (typeof object.url === 'string' ? object.url : null),
+        })
+        .execute();
+    }
   });
 
 federation
   .setFollowersDispatcher(
     "/users/{identifier}/followers",
-    (ctx, identifier, cursor) => {
-      const followers = db
-        .prepare<unknown[], Actor>(
-          `
-        SELECT followers.*
-        FROM follows
-        JOIN actors AS followers ON follows.follower_id = followers.id
-        JOIN actors AS following ON follows.following_id = following.id
-        JOIN users ON users.id = following.user_id
-        WHERE users.username = ?
-        ORDER BY follows.created DESC
-        `,
-        )
-        .all(identifier);
+    async (ctx, identifier, cursor) => {
+      const followers = await db
+        .selectFrom('follows')
+        .innerJoin('actors as followers', 'follows.follower_id', 'followers.id')
+        .innerJoin('actors as following', 'follows.following_id', 'following.id')
+        .innerJoin('users', 'users.id', 'following.user_id')
+        .select([
+          'followers.id',
+          'followers.user_id',
+          'followers.uri',
+          'followers.handle',
+          'followers.name',
+          'followers.inbox_url',
+          'followers.shared_inbox_url',
+          'followers.url',
+          'followers.created'
+        ])
+        .where('users.username', '=', identifier)
+        .orderBy('follows.created', 'desc')
+        .execute();
       const items: Recipient[] = followers.map((f) => ({
         id: new URL(f.uri),
         inboxId: new URL(f.inbox_url),
@@ -244,36 +270,29 @@ federation
       return { items };
     },
   )
-  .setCounter((ctx, identifier) => {
-    const result = db
-      .prepare<unknown[], { cnt: number }>(
-        `
-        SELECT count(*) AS cnt
-        FROM follows
-        JOIN actors ON actors.id = follows.following_id
-        JOIN users ON users.id = actors.user_id
-        WHERE users.username = ?
-        `,
-      )
-      .get(identifier);
-    return result == null ? 0 : result.cnt;
+  .setCounter(async (ctx, identifier) => {
+    const result = await db
+      .selectFrom('follows')
+      .innerJoin('actors', 'actors.id', 'follows.following_id')
+      .innerJoin('users', 'users.id', 'actors.user_id')
+      .select((eb) => eb.fn.count('follows.follower_id').as('cnt'))
+      .where('users.username', '=', identifier)
+      .executeTakeFirst();
+    return result == null ? 0 : Number(result.cnt);
   });
 
 federation.setObjectDispatcher(
   Note,
   "/users/{identifier}/posts/{id}",
-  (ctx, values) => {
-    const post = db
-      .prepare<unknown[], Post>(
-        `
-        SELECT posts.*
-        FROM posts
-        JOIN actors ON actors.id = posts.actor_id
-        JOIN users ON users.id = actors.user_id
-        WHERE users.username = ? AND posts.id = ?
-        `,
-      )
-      .get(values.identifier, values.id);
+  async (ctx, values) => {
+    const post = await db
+      .selectFrom('posts')
+      .innerJoin('actors', 'actors.id', 'posts.actor_id')
+      .innerJoin('users', 'users.id', 'actors.user_id')
+      .selectAll('posts')
+      .where('users.username', '=', values.identifier)
+      .where('posts.id', '=', Number(values.id))
+      .executeTakeFirst();
     if (post == null) return null;
     return new Note({
       id: ctx.getObjectUri(Note, values),
@@ -293,33 +312,28 @@ async function persistActor(actor: APActor): Promise<Actor | null> {
     logger.debug("Actor is missing required fields: {actor}", { actor });
     return null;
   }
-  return (
-    db
-      .prepare<unknown[], Actor>(
-        `
-      -- Insert or update the actor
-      INSERT INTO actors (uri, handle, name, inbox_url, shared_inbox_url, url)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT (uri) DO UPDATE SET
-        handle = excluded.handle,
-        name = excluded.name,
-        inbox_url = excluded.inbox_url,
-        shared_inbox_url = excluded.shared_inbox_url,
-        url = excluded.url
-      WHERE
-        actors.uri = excluded.uri
-      RETURNING *
-      `,
-      )
-      .get(
-        actor.id.href,
-        await getActorHandle(actor),
-        actor.name?.toString(),
-        actor.inboxId.href,
-        actor.endpoints?.sharedInbox?.href,
-        actor.url?.href,
-      ) ?? null
-  );
+  return await db
+    .insertInto('actors')
+    .values({
+      uri: actor.id.href,
+      handle: await getActorHandle(actor),
+      name: actor.name?.toString() ?? null,
+      inbox_url: actor.inboxId.href,
+      shared_inbox_url: actor.endpoints?.sharedInbox?.href ?? null,
+      url: actor.url instanceof URL ? actor.url.href : (typeof actor.url === 'string' ? actor.url : null),
+    })
+    .onConflict((oc) => oc
+      .column('uri')
+      .doUpdateSet({
+        handle: (eb) => eb.ref('excluded.handle'),
+        name: (eb) => eb.ref('excluded.name'),
+        inbox_url: (eb) => eb.ref('excluded.inbox_url'),
+        shared_inbox_url: (eb) => eb.ref('excluded.shared_inbox_url'),
+        url: (eb) => eb.ref('excluded.url'),
+      })
+    )
+    .returningAll()
+    .executeTakeFirst() ?? null;
 }
 
 export default federation;

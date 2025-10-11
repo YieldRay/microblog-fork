@@ -1,5 +1,5 @@
 import type { FC } from "hono/jsx";
-import type { Actor, Post, User } from "./schema.ts";
+import type { Actor, Post, User } from "./database.ts";
 
 export const Layout: FC = (props) => (
   <html lang="en">

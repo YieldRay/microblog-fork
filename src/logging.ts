@@ -6,8 +6,8 @@ await configure({
   },
   filters: {},
   loggers: [
-    { category: "microblog", level: "debug", sinks: ["console"] },
-    { category: "fedify", level: "info", sinks: ["console"] },
-    { category: "logtape", level: "warning", sinks: ["console"] },
+    { category: "microblog", lowestLevel: "debug", sinks: ["console"] },
+    { category: "fedify", lowestLevel: "info", sinks: ["console"] },
+    { category: "logtape", lowestLevel: "warning", sinks: ["console"] },
   ],
 });
