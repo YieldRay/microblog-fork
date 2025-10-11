@@ -4,6 +4,10 @@ import app from "./app.tsx";
 import { initializeDatabase } from "./db.ts";
 import { logger } from "./logging.ts";
 
+const fetch = behindProxy(app.fetch.bind(app));
+
+export default fetch;
+
 async function startServer() {
   try {
     await initializeDatabase();
@@ -11,8 +15,8 @@ async function startServer() {
 
     serve(
       {
-        port: 8000,
-        fetch: behindProxy(app.fetch.bind(app)),
+        port: 3000,
+        fetch,
       },
       (info) => logger.info(`Server started at http://localhost:${info.port}`),
     );
@@ -22,4 +26,6 @@ async function startServer() {
   }
 }
 
-startServer();
+if (import.meta.main) {
+  startServer();
+}
