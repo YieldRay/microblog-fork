@@ -1,5 +1,6 @@
 /** @jsxImportSource hono/jsx */
 import type { FC, PropsWithChildren } from "hono/jsx";
+import { raw } from "hono/html";
 import {
   Avatar,
   Button,
@@ -68,6 +69,13 @@ export const Layout: FC = (props) => (
       <meta name="color-scheme" content="light dark" />
       <title>Microblog</title>
       <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+      <style>
+        {raw /* css */`.microblog-article a {
+          &:hover {
+            text-decoration: underline;
+          }
+        }`}
+      </style>
     </head>
     <body class="bg-slate-50 min-h-screen">
       <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -114,7 +122,7 @@ export const Home: FC<HomeProps> = ({
       </Flex>
     </Flex>
 
-    <Card className="mb-8">
+    <Card className="mb-8 clear-both">
       <form
         method="post"
         action={`/users/${escapeHtml(user.username)}/posts`}
@@ -125,13 +133,15 @@ export const Home: FC<HomeProps> = ({
             name="content"
             required={true}
             placeholder="What's up?"
-            rows={3}
-            className="resize-none"
+            rows={4}
+            className="min-h-16"
           />
         </FormField>
-        <Button type="submit" variant="primary">
-          Post
-        </Button>
+        <Flex justify="end" align="center" gap="3">
+          <Button type="submit" variant="primary" className="px-8">
+            Post
+          </Button>
+        </Flex>
       </form>
     </Card>
 
@@ -246,7 +256,7 @@ export interface ProfileEditFormProps {
 }
 
 export const ProfileEditForm: FC<ProfileEditFormProps> = ({ user }) => (
-  <Container maxWidth="md">
+  <>
     <Card className="mt-8">
       <PageHeader
         title="Edit Profile"
@@ -336,7 +346,7 @@ export const ProfileEditForm: FC<ProfileEditFormProps> = ({ user }) => (
         </Flex>
       </form>
     </Card>
-  </Container>
+  </>
 );
 
 export interface ProfileCardProps {
@@ -673,29 +683,28 @@ export const PostView: FC<PostViewProps> = ({ post }) => {
   const postUrl = isExternal ? post.url : `/users/${username}/posts/${post.id}`;
 
   return (
-    <div
-      class="bg-white rounded-lg border border-slate-200 hover:border-slate-300 transition-colors p-4 mb-4 cursor-pointer"
-      onclick={`window.location.href='${postUrl}'`}
-    >
-      <Flex align="start" gap="3" className="mb-3">
-        <Avatar src={post.avatar_data || undefined} alt="Avatar" size="sm" />
-        <div class="flex-1 min-w-0">
-          <div class="mb-2">
-            <PostActorLink actor={post} />
+    <a href={postUrl!}>
+      <article class="microblog-article bg-white rounded-lg border border-slate-200 hover:border-slate-300 transition-colors p-4 mb-4 cursor-pointer">
+        <Flex align="start" gap="3" className="mb-3">
+          <Avatar src={post.avatar_data!} alt="Avatar" size="sm" />
+          <div class="flex-1 min-w-0">
+            <div class="mb-2">
+              <PostActorLink actor={post} />
+            </div>
+            <div
+              class="prose prose-sm max-w-none text-slate-900"
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: use with sanitized content
+              dangerouslySetInnerHTML={{ __html: processedContent }}
+            />
           </div>
-          <div
-            class="prose prose-sm max-w-none text-slate-900"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: use with sanitized content
-            dangerouslySetInnerHTML={{ __html: processedContent }}
-          />
+        </Flex>
+        <div class="text-sm text-slate-500 border-t border-slate-100 pt-3">
+          <time datetime={formatForDateTimeAttribute(post.created)}>
+            {formatForDisplay(post.created)}
+          </time>
         </div>
-      </Flex>
-      <div class="text-sm text-slate-500 border-t border-slate-100 pt-3">
-        <time datetime={formatForDateTimeAttribute(post.created)}>
-          {formatForDisplay(post.created)}
-        </time>
-      </div>
-    </div>
+      </article>
+    </a>
   );
 };
 

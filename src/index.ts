@@ -15,7 +15,7 @@ async function startServer() {
 
     serve(
       {
-        port: 3000,
+        port: 8000,
         fetch,
       },
       (info) => logger.info(`Server started at http://localhost:${info.port}`),
