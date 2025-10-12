@@ -27,6 +27,7 @@
     "dev": "tsx watch ./src/index.ts",
     "prod": "node --import tsx ./src/index.ts",
     "tunnel": "fedify tunnel 8000",
+    "check": "biome check --unsafe",
     "lint": "biome lint",
     "format": "biome format",
     "type-check": "tsc --noEmit"
