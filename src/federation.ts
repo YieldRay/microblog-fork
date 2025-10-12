@@ -225,9 +225,12 @@ federation
         .execute();
     }
   })
-  .on(Create, async (_ctx, create) => {
+  .on(Create, async (ctx, create) => {
     const object = await create.getObject();
     if (!(object instanceof Note)) return;
+
+    logger.debug("on Create: {object}", { object });
+
     const actor = create.actorId;
     if (actor == null) return;
     const author = await object.getAttribution();
@@ -254,31 +257,41 @@ federation
         .returningAll()
         .executeTakeFirst();
     }
+
     // Check if this is a direct message (the `to` contains only a single local actor)
-    if (
-      insertedPost &&
-      Array.isArray(object.toIds) &&
-      object.toIds.length === 1
-    ) {
-      const toUri = object.toIds[0];
-      // find local actor
-      const recipient = await db
-        .selectFrom("actors")
-        .selectAll()
-        .where("uri", "=", toUri.href)
-        .executeTakeFirst();
-      if (recipient) {
-        await db
-          .insertInto("notifications")
-          .values({
-            recipient_actor_id: recipient.id,
-            type: "direct",
-            related_post_id: insertedPost.id,
-            related_actor_id: actorId,
-            message: `${author.name || author.preferredUsername || author.id?.href || "Unknown"} sent you a direct message`,
-            is_read: 0,
-          })
-          .execute();
+    if (insertedPost) {
+      const targets = [object.toIds, object.ccIds].flat();
+      for (const target of targets) {
+        if (target.origin === ctx.origin) {
+          const name = target.pathname.split("/")[2];
+
+          logger.info("Local delivery target found: ({name}) {target}", {
+            target: target.href,
+            name,
+          });
+
+          const recipient = (
+            await db
+              .selectFrom("actors")
+              .selectAll()
+              .where("name", "=", name)
+              .execute()
+          ).filter((a) => a.user_id !== null)[0];
+
+          if (recipient) {
+            await db
+              .insertInto("notifications")
+              .values({
+                recipient_actor_id: recipient.id,
+                type: "mention",
+                related_post_id: insertedPost.id,
+                related_actor_id: actorId,
+                message: `${author.name || author.preferredUsername || author.id?.href || "Unknown"} mentioned you in a post.`,
+                is_read: 0,
+              })
+              .execute();
+          }
+        }
       }
     }
   })

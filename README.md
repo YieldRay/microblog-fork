@@ -1,5 +1,6 @@
 > Fork of <https://github.com/fedify-dev/microblog>  
-> To test the user, use <https://activitypub.academy/>
+> To test the user, use <https://activitypub.academy/>  
+> <https://localhost.run/>
 
 # Federated microblog example using Fedify
 

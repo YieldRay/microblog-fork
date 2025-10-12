@@ -9,6 +9,7 @@ await configure({
   loggers: [
     { category: "microblog", lowestLevel: "debug", sinks: ["console"] },
     { category: "fedify", lowestLevel: "info", sinks: ["console"] },
+    { category: "kysely", lowestLevel: "debug", sinks: ["console"] },
     {
       category: ["logtape", "meta"],
       lowestLevel: "warning",

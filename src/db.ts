@@ -1,13 +1,21 @@
 import { env } from "node:process";
 import Database from "better-sqlite3";
+import { getLogger } from "@logtape/logtape";
 import { Kysely, PostgresDialect, SqliteDialect } from "kysely";
 import { Pool } from "pg";
 import type { Database as DatabaseInterface } from "./database.ts";
 import { createTables } from "./migrations.ts";
 
+const logger = getLogger("kysely");
 const dbType = env.DATABASE_URL_POSTGRES ? "pg" : "sqlite";
 
 const db = new Kysely<DatabaseInterface>({
+  log(event) {
+    logger.debug("{sql} {parameters}", {
+      sql: event.query.sql,
+      parameters: event.query.parameters,
+    });
+  },
   dialect: env.DATABASE_URL_POSTGRES
     ? new PostgresDialect({
         pool: new Pool({

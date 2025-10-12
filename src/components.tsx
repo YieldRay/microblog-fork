@@ -166,7 +166,7 @@ export const Card: FC<PropsWithChildren<CardProps>> = ({
 
   const variantClasses = {
     default: "border-slate-200",
-    notification: "border-l-4 border-slate-200",
+    notification: "border-l-2 border-slate-200",
     post: "border-slate-200 hover:border-slate-300 transition-colors",
   };
 

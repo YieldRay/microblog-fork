@@ -760,11 +760,7 @@ export const NotificationItem: FC<NotificationItemProps> = ({
   return (
     <Card
       variant="notification"
-      className={`mb-4 ${
-        notification.is_read
-          ? "border-l-slate-300 bg-slate-50"
-          : "border-l-blue-500 bg-white"
-      }`}
+      className={`mb-4 ${notification.is_read ? "bg-slate-50" : "bg-white"}`}
     >
       <Flex align="start" gap="3" className="mb-3">
         <Avatar
@@ -917,6 +913,7 @@ export const NotificationPage: FC<NotificationPageProps> = ({
           <form method="post" action="/notifications/clear">
             <Button
               type="submit"
+              size="sm"
               variant="secondary"
               onClick={() =>
                 confirm("Are you sure you want to clear all notifications?")
